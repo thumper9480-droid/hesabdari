@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 211,
+  "update": 212,
   "date": "2026-10-16",
   "type": "browser",
-  "label": "تاریخ و ساعت زیر لوگو، نسخه در تب و اصلاح منوها",
+  "label": "ساختار تأییدشدهٔ منو: گروه‌ها، معرفی‌ها و اطلاعات",
   "entry": "index.html",
   "assets": [
     "next-core.js",
