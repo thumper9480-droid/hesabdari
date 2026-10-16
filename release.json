@@ -1,0 +1,16 @@
+{
+  "version": "5.9.1-browser",
+  "update": 204,
+  "date": "2026-10-16",
+  "type": "browser",
+  "label": "بازطراحی اطلاعات پایه، بانک‌ها، موجودی، تعهدات و گزارش‌ها",
+  "entry": "index.html",
+  "assets": [
+    "next-core.js",
+    "next-ui.js",
+    "next-ui.css",
+    "fonts/"
+  ],
+  "storage": "localStorage",
+  "status": "preview"
+}
