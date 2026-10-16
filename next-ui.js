@@ -14,7 +14,7 @@ globalThis.SadraNext = {
       tags: "برچسب‌ها",
       units: "معرفی واحدها",
       assets: "معرفی ارزها",
-      operations: "ثبت سند",
+      operations: "ثبت فاکتور",
       installments: "اقساط",
       inventory: "موجودی و گردش کالا",
       accounts: "حساب اشخاص",
@@ -792,7 +792,9 @@ globalThis.SadraNext = {
           ledger.audit("legacy-sync", "migration", "204", null, deltas);
         });
     }
+    const navigation218=[];
     function go(next) {
+      if(!host.hidden && next!==route)navigation218.push(route);
       syncLegacy();
       route = next;
       tab = "";
@@ -934,8 +936,8 @@ globalThis.SadraNext = {
         fields.push(ref("catalogUnitId","واحد پیش‌فرض مقدار",null,compatible));
         fields.push(ref("catalogRateUnitId","واحد مبنای نرخ",null,compatible.filter(u=>dimension==="weight" || !v.catalogUnitId || u.id===v.catalogUnitId)));
         if (v.catalogMode==="weightCount")fields.push(ref("catalogPieceUnitId","واحد وزن هر قطعه",null,active("units").filter(u=>u.dimension==="weight")));
-        if (["weight", "weightCount"].includes(v.catalogMode))
-          fields.push(text("catalogPurity", "عیار", "text", true));
+        if (["weight", "weightCount","count"].includes(v.catalogMode))
+          fields.push(text("catalogPurity", v.catalogMode==="count"?"عیار (در صورت داشتن)":"عیار", "text", v.catalogMode!=="count"));
         if (v.catalogMode === "weightCount")
           fields.push(
             text("catalogPieceWeight", "وزن ثابت هر قطعه", "text", true),
@@ -2144,7 +2146,7 @@ globalThis.SadraNext = {
         ),
       );
     }
-    function showDocument(id) {
+    function showDocument(id,options={}) {
       if (!id) return;
       const d = ledger.find("documents", id),
         dialog = el("dialog");
@@ -2217,7 +2219,7 @@ globalThis.SadraNext = {
               f(ledger.remaining(d.id, "fee")),
           ),
         );
-        if (d.type === "sell")
+        if (d.type === "sell" && !options.readOnly)
           dialog.append(
             btn("رزرو موجودی برای این فروش", () => reserveForm(d)),
             btn("آزادسازی رزرو", () => {
@@ -2227,7 +2229,7 @@ globalThis.SadraNext = {
             }),
           );
       }
-      if (d.type !== "legacy" && !d.reversalOf)
+      if (!options.readOnly && d.type !== "legacy" && !d.reversalOf)
         dialog.append(
           btn(
             "برگشت با حفظ تاریخچه",
@@ -2875,383 +2877,61 @@ globalThis.SadraNext = {
       dialog.showModal();
     }
     function reports() {
-      const controls = el("div", null, "n-filters n-grid");
-      const fields = [
-        ["person", "people", "شخص"],
-        ["good", "goods", "کالا / ارز"],
-        ["group", "groups", "گروه کالا"],
-        ["fund", "funds", "صندوق / بانک"],
-        ["location", "locations", "محل"],
-        ["expenseGroup", "expenseGroups", "دستهٔ هزینه"],
-        ["expenseHead", "expenseHeads", "سرفصل هزینه"],
-        ["incomeSource", "incomeSources", "منبع درآمد"],
-        ["incomeType", "incomeTypes", "نوع درآمد"],
-      ];
-      for (const [key, kind, title] of fields) {
-        const s = select(key === "fund" ? fieldOptions("funds", true).concat(fieldOptions("banks", true)) : fieldOptions(kind, true), filter[key], "همه");
-        s.onchange = () => {
-          filter[key] = s.value;
-          page = 0;
-          render();
-        };
-        controls.append(field(title, s));
+      const controls=el("div",null,"n-grid");controls.id="report218-controls";
+      function dropdown(key,title,items,blank="همه",reset=[]) {
+        const c=select(items,filter[key] || "",blank);c.id="report218-"+key;
+        c.onchange=()=>{filter[key]=c.value;reset.forEach(k=>delete filter[k]);page=0;render();document.getElementById(c.id)?.focus();};controls.append(field(title,c));return c;
       }
-      for (const [key, title, type] of [
-        ["from", "از تاریخ", "date"],
-        ["to", "تا تاریخ", "date"],
-        ["q", "جست‌وجو در شرح", "text"],
-        ["number", "شماره سند", "text"],
-        ["purity", "عیار", "text"],
-        ["min", "حداقل قدر مطلق مقدار", "text"],
-        ["max", "حداکثر قدر مطلق مقدار", "text"],
-      ]) {
-        const c = input(filter[key] || "", type);
-        c.onchange = () => {
-          filter[key] = c.value;
-          page = 0;
-          render();
-        };
-        controls.append(field(title, c));
+      const categories={banks:"بانک‌ها",funds:"صندوق‌ها",expenses:"هزینه‌ها",incomes:"درآمدها",installments:"اقساط",people:"افراد"};
+      dropdown("reportKind","گروه گزارش",choices(categories),null,["bankId","accountId","groupId","partyId","contractId"]);
+      const kind=filter.reportKind;
+      const recordsWithStatus=k=>(ledger.s[k] || []).map(x=>({...x,name:x.name+(x.active===false?" (غیرفعال)":"")}));
+      if(kind==="banks") {
+        dropdown("bankId","بانک",recordsWithStatus("bankInstitutions"),"همهٔ بانک‌ها",["accountId"]);
+        dropdown("accountId","شماره حساب",ledger.s.funds.filter(f=>f.legacyKind==="banks" && (!filter.bankId || f.bankId===filter.bankId)).map(f=>({id:f.id,name:name("bankInstitutions",f.bankId)+" — "+(f.accountNumber || f.name)})),"همهٔ شماره‌حساب‌ها");
       }
-      const op = select(choices(types), filter.type, "همهٔ عملیات");
-      op.onchange = () => {
-        filter.type = op.value;
-        render();
-      };
-      controls.append(field("نوع واقعی عملیات", op));
-      const bucket = select(
-        choices({
-          stock: "موجودی فیزیکی",
-          commitment: "تعهد بانک و صندوق",
-          person: "حساب اشخاص",
-          expense: "هزینه‌ها",
-          income: "درآمدها",
-        }),
-        filter.bucket,
-        "همهٔ دفاتر",
-      );
-      bucket.onchange = () => {
-        filter.bucket = bucket.value;
-        render();
-      };
-      controls.append(field("دفتر", bucket));
-      const tagMode = select(
-        choices({ any: "حداقل یکی از برچسب‌ها", all: "همهٔ برچسب‌ها" }),
-        filter.tagMode || "any",
-        null,
-      );
-      tagMode.onchange = () => {
-        filter.tagMode = tagMode.value;
-        render();
-      };
-      controls.append(field("منطق برچسب‌ها", tagMode));
-      const tbox = el("div", null, "n-chips");
-      for (const t of ledger.s.tags) {
-        const c = input("", "checkbox");
-        c.checked = (filter.tags || []).includes(t.id);
-        c.onchange = () => {
-          filter.tags = [
-            ...(filter.tags || []).filter((x) => x !== t.id),
-            ...(c.checked ? [t.id] : []),
-          ];
-          render();
-        };
-        const l = field(t.name, c);
-        l.className = "n-choice";
-        tbox.append(l);
+      if(kind==="funds")dropdown("partyId","صندوق",recordsWithStatus("funds").filter(f=>f.legacyKind!=="banks"),"همهٔ صندوق‌ها");
+      if(kind==="expenses") {
+        dropdown("groupId","محل هزینه",recordsWithStatus("expenseGroups"),"همهٔ محل‌ها",["partyId"]);
+        dropdown("partyId","هزینه",recordsWithStatus("expenses").filter(e=>!filter.groupId || e.groupId===filter.groupId).map(e=>({...e,name:name("expenseGroups",e.groupId)+" — "+e.name})),"همهٔ هزینه‌ها");
       }
-      controls.append(field("برچسب‌ها", tbox));
-      const status = select(
-        choices({
-          open: "تسویه‌نشده",
-          partial: "تسویه جزئی",
-          closed: "تسویه کامل",
-          reversed: "برگشت‌شده",
-        }),
-        filter.status,
-        "همهٔ وضعیت‌ها",
-      );
-      status.onchange = () => {
-        filter.status = status.value;
-        render();
-      };
-      controls.append(field("وضعیت معامله", status));
+      if(kind==="incomes")dropdown("partyId","درآمد",recordsWithStatus("incomes"),"همهٔ درآمدها");
+      if(kind==="people") {
+        dropdown("groupId","گروه افراد",recordsWithStatus("peopleGroups"),"همهٔ گروه‌ها",["partyId"]);
+        dropdown("partyId","فرد",recordsWithStatus("people").filter(p=>!filter.groupId || p.groupId===filter.groupId),"همهٔ افراد");
+      }
+      if(kind==="installments") {
+        const legacy=bridge.installments?.() || [],contracts=[...(ledger.s.installmentContracts214 || []).map(c=>({id:c.id,name:c.title})),...legacy.filter((c,i,arr)=>arr.findIndex(x=>x.contract===c.contract)===i).map(c=>({id:c.contract,name:c.title}))];
+        dropdown("contractId","قرارداد اقساط",contracts,"همهٔ قراردادها");
+      }
       host.append(card(controls));
-      const reportSource = reportData();
-      let entries = reportSource.entries.sort(
-          (a, b) =>
-            a.date.localeCompare(b.date) ||
-            String(a.at).localeCompare(String(b.at)),
-        ),
-        running = new Map();
-      entries = entries.map((e) => {
-        const key = [e.bucket, e.account, e.good, e.purity || ""].join("|"),
-          before = running.get(key) || "0",
-          after = add(before, e.quantity);
-        running.set(key, after);
-        return { ...e, before, after };
-      });
-      const docsById = reportSource.docs;
-      function stateOf(d) {
-        if (d.archive) return "";
-        if (ledger.s.documents.some((x) => x.reversalOf === d.id))
-          return "reversed";
-        if (!["buy", "sell"].includes(d.type)) return "";
-        const comps = ["goods", "money", "fee"],
-          open = comps.some((c) => dec(ledger.remaining(d.id, c)) !== 0n),
-          changed = ledger.s.documents.some((x) => x.related === d.id);
-        return !open ? "closed" : changed ? "partial" : "open";
+      if(!kind){host.append(el("p","برای مشاهدهٔ گزارش، گروه را انتخاب کنید.","n-notice"));return;}
+      latestTitle="گزارش "+categories[kind];
+      if(kind==="installments") {
+        latestHeaders=["قرارداد","طرف حساب","قسط","سررسید شمسی","کالا / ارز","مقدار تعهد","پرداخت‌شده","مانده","واحد"];
+        const rows=[...(ledger.s.installmentContracts214 || []).filter(c=>!filter.contractId || c.id===filter.contractId).flatMap(c=>c.dues.map((due,i)=>{const remaining=ledger.installmentRemaining216(c.id,due.id);return [c.title,c.partyName,String(i+1),due.jalali,c.goodName,due.amount,sub(due.amount,remaining),remaining,c.unit.name];})),...(bridge.installments?.() || []).filter(c=>!filter.contractId || c.contract===filter.contractId).map(c=>[c.title,c.party,String(c.number || ""),c.date,name("goods",c.good),String(c.total),sub(c.total,c.remaining),String(c.remaining),c.unit])];
+        latestRows=rows;host.append(table(latestHeaders,rows.map(cells=>({cells:cells.map((v,i)=>[2,5,6,7].includes(i)?f(v):v)}))),bar(btn("چاپ گزارش",printReport)));return;
       }
-      let rows = entries.filter((e) => {
-        const g = good(e.good),
-          d = docsById.get(e.document),
-          fund = ledger.s.funds.find((x) => x.id === e.account),
-          expense =
-            e.bucket === "expense"
-              ? e.accountSnapshot ||
-                ledger.s.expenses.find((x) => x.id === e.account)
-              : null,
-          income =
-            e.bucket === "income"
-              ? e.accountSnapshot ||
-                ledger.s.incomes.find((x) => x.id === e.account)
-              : null,
-          abs = dec(e.quantity) < 0n ? -dec(e.quantity) : dec(e.quantity);
-        return (
-          (!filter.from || e.date >= filter.from) &&
-          (!filter.to || e.date <= filter.to) &&
-          (!filter.person ||
-            (e.bucket === "person" && e.account === filter.person) ||
-            d.person === filter.person ||
-            d.entries.some(
-              (x) => x.bucket === "person" && x.account === filter.person,
-            )) &&
-          (!filter.good || e.good === filter.good) &&
-          (!filter.group || g?.groupId === filter.group) &&
-          (!filter.fund ||
-            (["stock", "commitment"].includes(e.bucket) && e.account === filter.fund)) &&
-          (!filter.location || fund?.locationId === filter.location) &&
-          (!filter.expenseGroup ||
-            (e.bucket === "expense" &&
-              expense?.groupId === filter.expenseGroup)) &&
-          (!filter.expenseHead || expense?.headId === filter.expenseHead) &&
-          (!filter.incomeSource ||
-            (e.bucket === "income" &&
-              income?.sourceId === filter.incomeSource)) &&
-          (!filter.incomeType || income?.typeId === filter.incomeType) &&
-          (!filter.type || e.type === filter.type) &&
-          (!filter.bucket || e.bucket === filter.bucket) &&
-          (!filter.number || String(d.invoiceNumber || d.number) === String(filter.number)) &&
-          (!filter.q || norm(e.notes).includes(norm(filter.q))) &&
-          (!filter.purity || e.purity === filter.purity) &&
-          (!filter.min || abs >= dec(filter.min)) &&
-          (!filter.max || abs <= dec(filter.max)) &&
-          (!filter.status || stateOf(d) === filter.status) &&
-          (!(filter.tags || []).length ||
-            (filter.tagMode === "all"
-              ? filter.tags.every((t) => e.tags.includes(t))
-              : filter.tags.some((t) => e.tags.includes(t))))
-        );
+      const source=reportData(),funds=new Map(ledger.s.funds.map(f=>[f.id,f])),sums=new Map(),running=new Map();
+      let entries=source.entries.filter(e=>{
+        if(kind==="banks"){const a=funds.get(e.account);return ["stock","commitment"].includes(e.bucket) && a?.legacyKind==="banks" && (!filter.bankId || a.bankId===filter.bankId) && (!filter.accountId || a.id===filter.accountId);}
+        if(kind==="funds")return ["stock","commitment"].includes(e.bucket) && funds.get(e.account)?.legacyKind!=="banks" && funds.has(e.account) && (!filter.partyId || e.account===filter.partyId);
+        const bucket={people:"person",expenses:"expense",incomes:"income"}[kind];if(e.bucket!==bucket || (filter.partyId && e.account!==filter.partyId))return false;
+        const entity=ledger.s[kind].find(x=>x.id===e.account) || e.accountSnapshot;
+        return !filter.groupId || entity?.groupId===filter.groupId;
+      }).sort((a,b)=>(a.date || "").localeCompare(b.date || "") || String(a.at).localeCompare(String(b.at)));
+      latestHeaders=["تاریخ","شماره فاکتور","عملیات","طرف حساب","کالا / ارز","عیار","مقدار (+ بدهکار / − بستانکار)","واحد","تعداد","مانده","توضیحات"];
+      const rows=entries.map(e=>{
+        const d=source.docs.get(e.document),g=e.snapshot || good(e.good),u=g?.unit || unit(g?.unitId),key=[e.bucket,e.account,e.good,e.purity || ""].join("|");
+        const after=add(running.get(key) || "0",e.quantity);running.set(key,after);
+        const sumKey=[e.bucket,e.good,e.purity || ""].join("|");sums.set(sumKey,add(sums.get(sumKey) || "0",e.quantity));
+        return {item:e,cells:[e.originalDate || (e.date?persianFormatter.format(new Date(e.date+"T12:00:00Z")):"—"),String(d?.invoiceNumber || d?.number || ""),types[e.type] || e.type,accountName(e),g?.name || e.good,e.purity || "—",(dec(e.quantity)>0n?"+":"")+e.quantity,u?.name || "",e.count || "—",after,e.notes || ""]};
       });
-      const sums = new Map();
-      for (const e of rows) {
-        const key = e.bucket + "|" + e.good + "|" + (e.purity || "");
-        sums.set(key, add(sums.get(key) || "0", e.quantity));
-      }
-      const headers = [
-        "تاریخ",
-        "سند",
-        "نوع",
-        "دفتر",
-        "حساب",
-        "کالا",
-        "ورود/بدهکار (+)",
-        "خروج/بستانکار (−)",
-        "واحد",
-        "عیار",
-        "معادل مبنا (گرم)",
-        "مانده قبل",
-        "مانده بعد",
-        "شرح",
-        "برچسب‌ها",
-      ];
-      const make = (e) => {
-        const d = docsById.get(e.document),
-          g = e.snapshot || good(e.good),
-          u = g.unit || unit(g.unitId);
-        return [
-          e.date || e.originalDate || "تاریخ ثبت نشده",
-          d.invoiceNumber || d.number,
-          types[e.type] || e.type,
-          {
-            stock: "موجودی",
-            commitment: "تعهد بانک و صندوق",
-            person: "اشخاص",
-            expense: "هزینه",
-            income: "درآمد",
-          }[e.bucket],
-          accountName(e),
-          g.name,
-          dec(e.quantity) > 0n ? e.quantity : "0",
-          dec(e.quantity) < 0n ? sub("0", e.quantity) : "0",
-          u?.name || "",
-          e.purity || "",
-          g.metal === "طلا" && u?.factor && e.purity
-            ? ledger.equivalent(mul(e.quantity, u.factor), e.purity)
-            : "",
-          e.before,
-          e.after,
-          e.notes,
-          (e.tags || []).map((t) => name("tags", t)).join("، "),
-        ];
-      };
-      const numeric = new Set([1, 6, 7, 9, 10, 11, 12]),
-        sortCol = Number(filter.sortColumn ?? 0),
-        direction = filter.sortDirection === "desc" ? -1 : 1;
-      rows.sort((a, b) => {
-        const x = make(a)[sortCol],
-          y = make(b)[sortCol];
-        if (
-          numeric.has(sortCol) &&
-          String(x ?? "") !== "" &&
-          String(y ?? "") !== ""
-        ) {
-          const one = dec(x),
-            two = dec(y);
-          return (one < two ? -1 : one > two ? 1 : 0) * direction;
-        }
-        return String(x ?? "").localeCompare(String(y ?? ""), "fa") * direction;
-      });
-      const columns = filter.columns || headers.map((_, i) => i),
-        shownHeaders = columns.map((i) => headers[i]);
-      latestRows = rows.map(make).map((r) => columns.map((i) => r[i]));
-      latestHeaders = shownHeaders;
-      latestTitle = "گزارش گردش اسناد";
-      const sortControl = select(
-        headers.map((name, i) => ({ id: String(i), name })),
-        String(sortCol),
-        null,
-      );
-      sortControl.onchange = () => {
-        filter.sortColumn = Number(sortControl.value);
-        render();
-      };
-      const dirControl = select(
-        choices({ asc: "صعودی", desc: "نزولی" }),
-        filter.sortDirection || "asc",
-        null,
-      );
-      dirControl.onchange = () => {
-        filter.sortDirection = dirControl.value;
-        render();
-      };
-      const choose = el("details"),
-        columnSummary = el("summary", "انتخاب ستون‌ها");
-      choose.append(columnSummary);
-      headers.forEach((h, i) => {
-        const c = input("", "checkbox");
-        c.checked = columns.includes(i);
-        c.onchange = () => {
-          filter.columns = headers
-            .map((_, j) => j)
-            .filter((j) => (j === i ? c.checked : columns.includes(j)));
-          if (!filter.columns.length) filter.columns = [0];
-          render();
-        };
-        const label = field(h, c);
-        label.className = "n-choice";
-        choose.append(label);
-      });
-      host.append(
-        bar(
-          field("مرتب‌سازی", sortControl),
-          field("ترتیب", dirControl),
-          choose,
-        ),
-      );
-      host.append(
-        bar(
-          btn("خروجی CSV", () => exportReport("csv")),
-          btn("خروجی Excel", () => exportReport("xls")),
-          btn("چاپ / ذخیره PDF", printReport),
-          btn("پاک‌کردن فیلترها", () => {
-            filter = {};
-            page = 0;
-            render();
-          }),
-        ),
-        el(
-          "p",
-          "تهیه گزارش: " +
-            new Date().toLocaleString("fa-IR") +
-            " · " +
-            f(rows.length) +
-            " ردیف · فیلترها: " +
-            JSON.stringify(filter),
-          "n-muted",
-        ),
-      );
-      const summary = el("div", null, "n-chips");
-      for (const [k, sum] of sums) {
-        const [b, id, p] = k.split("|");
-        summary.append(
-          el(
-            "span",
-            {
-              stock: "موجودی",
-              commitment: "تعهد بانک و صندوق",
-              person: "اشخاص",
-              expense: "هزینه",
-              income: "درآمد",
-            }[b] +
-              " · " +
-              name("goods", id) +
-              " · " +
-              f(sum) +
-              " " +
-              name("units", good(id)?.unitId) +
-              (p ? " · عیار " + f(p) : ""),
-            "n-chip",
-          ),
-        );
-      }
-      host.append(
-        card(
-          el("h3", "جمع تغییرات ردیف‌های فیلترشده، به تفکیک دفتر و دارایی"),
-          summary,
-        ),
-      );
-      const size = 50,
-        max = Math.max(0, Math.ceil(rows.length / size) - 1);
-      page = Math.min(page, max);
-      host.append(
-        table(
-          shownHeaders,
-          rows.slice(page * size, (page + 1) * size).map((e) => ({
-            item: e,
-            cells: columns.map((i) =>
-              numeric.has(i) ? f(make(e)[i]) : make(e)[i],
-            ),
-          })),
-          (e) =>
-            btn("سند اصلی", () => {
-              const d = docsById.get(e.document);
-              d.archive ? showArchive(d) : showDocument(e.document);
-            }),
-        ),
-        bar(
-          btn("صفحه قبل", () => {
-            page = Math.max(0, page - 1);
-            render();
-          }),
-          el("span", "صفحه " + f(page + 1) + " از " + f(max + 1)),
-          btn("صفحه بعد", () => {
-            page = Math.min(max, page + 1);
-            render();
-          }),
-        ),
-      );
-      installmentReport();
+      latestRows=rows.map(r=>r.cells);const totals=card(el("h3","مانده به تفکیک کالا، ارز و واحد"));
+      for(const [key,value]of sums){const [bucket,id,purity]=key.split("|"),g=good(id);totals.append(el("p",(g?.name || id)+" — "+f(value)+" "+name("units",g?.unitId)+(purity?" — عیار "+f(purity):"")+(bucket==="commitment"?" — تعهد":"")));}
+      host.append(totals,bar(btn("چاپ گزارش",printReport),el("span",f(rows.length)+" ردیف")));
+      const max=Math.max(0,Math.ceil(rows.length/50)-1);page=Math.min(page,max);
+      host.append(table(latestHeaders,rows.slice(page*50,(page+1)*50).map(r=>({...r,cells:r.cells.map((v,i)=>[1,5,6,8,9].includes(i)?f(v):v)})),e=>btn("نمایش سند",()=>{const d=source.docs.get(e.document);d?.archive?showArchive(d):showDocument(e.document);})),bar(btn("صفحه قبل",()=>{page=Math.max(0,page-1);render();}),el("span",f(page+1)+" / "+f(max+1)),btn("صفحه بعد",()=>{page=Math.min(max,page+1);render();})));
     }
     function printReport() {
       const w = window.open("", "_blank", "width=1200,height=850");
@@ -3629,7 +3309,7 @@ globalThis.SadraNext = {
       nativeButton212("portfolio", "برنامه"),
       screenButton212("inventory", "reconcile", "موجودی"),
       nativeButton212("opening", "سرمایه اولیه"),
-      screenButton212("operations", "invoice", "ثبت سند"),
+      screenButton212("operations", "invoice", "ثبت فاکتور"),
       screenButton212("reports", "reports", "گزارش‌ها"),
       group212, introductions212, information212,
     ];
@@ -3669,11 +3349,26 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۷";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۸";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۷";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۸";
     });
     const api = {
+      escape218(){
+        const dialog=document.querySelector("dialog[open]");if(dialog){dialog.close();return true;}
+        if(document.body.classList.contains("next204-active")) {
+          if(route==="operations" && forms214.escape218())return true;
+          const focused=document.activeElement,controls=[...host.querySelectorAll("input,select,textarea")].filter(c=>!c.disabled && c.getClientRects().length),i=controls.indexOf(focused);
+          if(i>0){controls[i-1].focus();return true;}
+          if(route==="reports" && Object.values(filter).some(Boolean)){const key=["partyId","accountId","groupId","bankId","contractId","reportKind"].find(k=>filter[k]);if(key){delete filter[key];render();return true;}}
+          const previous=navigation218.pop();if(previous){const current=route;go(previous);if(navigation218.at(-1)===current)navigation218.pop();return true;}
+        }
+        if(!document.body.classList.contains("next204-active")) {
+          const focused=document.activeElement,root=focused?.closest("form,section,main"),controls=root?[...root.querySelectorAll("input,select,textarea,button")].filter(c=>!c.disabled && c.getClientRects().length):[],i=controls.indexOf(focused);
+          if(i>0){controls[i-1].focus();return true;}
+        }
+        const section=document.activeElement?.closest("aside details");if(section?.open){section.open=false;section.querySelector("summary")?.focus();return true;}return false;
+      },
       invoiceShortcut217(key){if(route==="operations" && !document.querySelector("dialog[open]"))forms214.shortcut(key);},
       go,
       get ledger() {

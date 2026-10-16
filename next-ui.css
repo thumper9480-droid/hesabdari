@@ -414,3 +414,13 @@ aside > button[data-page="installments"], aside > button[data-page="backup"] { d
 /* Update 217: invoice-only print surface. */
 #invoice217-print{display:none}
 @media print{body.invoice217-printing>*{display:none!important}body.invoice217-printing>#invoice217-print{display:block!important;direction:rtl;color:#000;background:#fff;padding:12px;font-family:inherit}#invoice217-print table{width:100%;border-collapse:collapse}#invoice217-print td,#invoice217-print th{border:1px solid #aaa;padding:6px;text-align:right}#invoice217-print .n-scroll{overflow:visible}}
+
+/* Update 218: compact posted rows and right/left account balances. */
+#next204 .invoice218-rowlist{max-height:25vh;min-height:64px;overflow:auto}
+#next204 .invoice218-rowlist tr[aria-selected=true]{background:#d6eee4;outline:2px solid #328c72;outline-offset:-2px}
+#next204 .invoice218-balances-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;direction:rtl}
+#next204 .invoice218-balances-grid p{margin:7px 0}
+#next204 .invoice218-rowlist td:nth-child(6),#next204 .invoice218-rowlist td:nth-child(8){direction:ltr;text-align:center;unicode-bidi:isolate}
+@media(max-width:600px){#next204 .invoice218-balances-grid{grid-template-columns:1fr}}
+@media print{#next204 .invoice218-rowlist{max-height:none;overflow:visible}}
+@media print{body.next204-active.invoice217-printing>#app{display:none!important}}

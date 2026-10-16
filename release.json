@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 217,
+  "update": 218,
   "date": "2026-10-17",
   "type": "browser",
-  "label": "معرفی ارز و واحد کالا، دریافت و پرداخت کالایی و مدیریت فاکتور",
+  "label": "ثبت فوری سطر، قفل F3، مانده فاکتور و گزارش‌های گروهی",
   "entry": "index.html",
   "assets": [
     "next-core.js",
