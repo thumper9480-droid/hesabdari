@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 208,
+  "update": 209,
   "date": "2026-10-16",
   "type": "browser",
-  "label": "جابجایی منوها، عنوان سرمایه اولیه و رنگ عنوان‌های گروه‌ها",
+  "label": "انتقال برچسب‌ها از گروه‌ها به منوی اصلی",
   "entry": "index.html",
   "assets": [
     "next-core.js",
