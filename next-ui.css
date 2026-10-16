@@ -370,3 +370,6 @@ aside details.sadra-navigation-section { width: 100%; padding: 0 8px 7px; border
 aside details.sadra-navigation-section > summary { cursor: pointer; display: list-item; min-height: 46px; padding: 10px 4px; color: #f3fbf7; font-weight: 700; font-size: 14px; }
 aside details.sadra-navigation-section[open] > summary { border-bottom: 1px solid #ffffff28; margin-bottom: 4px; }
 aside details.sadra-navigation-section button { width: 100%; padding-inline-start: 20px; text-align: start; }
+
+/* Changes 2/3: these destinations never appear as top-level navigation items. */
+aside > button[data-page="installments"], aside > button[data-page="backup"] { display: none !important; }

@@ -3593,6 +3593,21 @@ globalThis.SadraNext = {
     sidebar212.append(...ordered212);
     if (clock212) sidebar212.append(clock212);
     if (exit212) sidebar212.append(exit212);
+    // Changes 2 and 3: enforce one entry in its submenu even if a legacy menu appends it later.
+    const destinations213 = [
+      {page: "installments", section: group212, button: group212.querySelector('button[data-page="installments"]'), before: group212.querySelector('button[data-next204="people"]')},
+      {page: "backup", section: information212, button: information212.querySelector('button[data-page="backup"]'), before: information212.querySelector('button[data-page="update"]')},
+    ];
+    function keepSubmenus213() {
+      for (const item of destinations213) {
+        if (!item.button) continue;
+        sidebar212.querySelectorAll('button[data-page="' + item.page + '"]').forEach(button => { if (button !== item.button) button.remove(); });
+        if (item.button.parentElement !== item.section) item.section.insertBefore(item.button, item.before?.parentElement === item.section ? item.before : null);
+      }
+    }
+    keepSubmenus213();
+    window.addEventListener("load", keepSubmenus213, {once: true});
+    new MutationObserver(keepSubmenus213).observe(sidebar212, {childList: true});
     // Stop legacy invoice shortcuts from posting hidden forms while a new screen is active.
     window.addEventListener(
       "keydown",
@@ -3605,9 +3620,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۲";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۳";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۲";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۳";
     });
     const api = {
       go,

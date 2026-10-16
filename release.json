@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 212,
+  "update": 213,
   "date": "2026-10-16",
   "type": "browser",
-  "label": "ساختار تأییدشدهٔ منو: گروه‌ها، معرفی‌ها و اطلاعات",
+  "label": "اقساط فقط در گروه‌ها؛ پشتیبانی و بازیابی فقط در اطلاعات",
   "entry": "index.html",
   "assets": [
     "next-core.js",
