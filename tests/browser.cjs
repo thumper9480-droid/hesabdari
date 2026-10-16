@@ -18,14 +18,12 @@ const { chromium } = require(
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(process.env.APP_URL || "http://127.0.0.1:8001");
     await page.waitForFunction(() => !!window.Sadra204);
-    assert.match(await page.title(), /۲۰۴/);
-    await page
-      .getByRole("button", { name: "محل‌های نگهداری", exact: true })
-      .click();
+    assert.match(await page.title(), /۲۰۵/);
     await page
       .getByRole("button", { name: "ایجاد مورد جدید", exact: true })
       .click();
     await page.locator("#n-name").fill("فروشگاه آزمون");
+    await page.locator("#n-typeId").selectOption("commodity");
     await page.getByRole("button", { name: "ذخیره", exact: true }).click();
     assert.equal(await page.locator("dialog").count(), 0);
     assert.ok(await page.getByText("فروشگاه آزمون", { exact: true }).count());
@@ -34,7 +32,6 @@ const { chromium } = require(
       .getByRole("button", { name: "ایجاد مورد جدید", exact: true })
       .click();
     await page.locator("#n-name").fill("<img src=x onerror=alert(1)> مهم");
-    await page.locator("#n-color").fill("#0000ff");
     await page.getByRole("button", { name: "ذخیره", exact: true }).click();
     assert.ok(
       await page

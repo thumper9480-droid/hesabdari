@@ -15,7 +15,7 @@ const { chromium } = require(
       errors = [];
     p.on("pageerror", (e) => errors.push(e.message));
     p.on("dialog", (d) => d.accept());
-    await p.goto("http://127.0.0.1:8001");
+    await p.goto(process.env.APP_URL || "http://127.0.0.1:8001");
     const original = await p.evaluate(() => {
       const s = JSON.parse(localStorage.getItem("kimia-591-reconstructed"));
       delete s.db.next204;
@@ -128,7 +128,7 @@ const { chromium } = require(
     );
     // Detect stale writes from another tab instead of silently overwriting its changes.
     const other = await context.newPage();
-    await other.goto("http://127.0.0.1:8001");
+    await other.goto(process.env.APP_URL || "http://127.0.0.1:8001");
     await p.evaluate(() =>
       Sadra204.ledger.put("locations", { name: "پنجره اول" }),
     );

@@ -13,7 +13,7 @@ const { chromium } = require(
     const p = await b.newPage(),
       errors = [];
     p.on("pageerror", (e) => errors.push(e.message));
-    await p.goto("http://127.0.0.1:8001");
+    await p.goto(process.env.APP_URL || "http://127.0.0.1:8001");
     await p.evaluate(() => Sadra204.go("banks"));
     const root = p.locator("#next204");
     await root.getByRole("button", { name: "بانک‌ها", exact: true }).click();

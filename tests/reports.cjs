@@ -14,7 +14,7 @@ const { chromium } = require(
     const p = await b.newPage({ viewport: { width: 1440, height: 1000 } }),
       errors = [];
     p.on("pageerror", (e) => errors.push(e.message));
-    await p.goto("http://127.0.0.1:8001");
+    await p.goto(process.env.APP_URL || "http://127.0.0.1:8001");
     const ids = await p.evaluate(() => {
       const l = Sadra204.ledger,
         s = l.s,
