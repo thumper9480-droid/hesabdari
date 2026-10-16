@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 214,
+  "update": 215,
   "date": "2026-10-16",
   "type": "browser",
-  "label": "فرم جدید اقساط و سربرگ مرحله‌ای ثبت سند",
+  "label": "انتخاب طرف حساب با بالا/پایین و اینتر؛ جست‌وجو و معرفی با ++",
   "entry": "index.html",
   "assets": [
     "next-core.js",

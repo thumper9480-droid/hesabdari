@@ -45,14 +45,31 @@ globalThis.SadraForms214 = {
       const add=(key,label,items,onchange)=>{
         const control=select(items,state[key] || "");control.id=prefix+"-"+key;control.required=true;
         root.append(field(label,control));
-        control.onchange=()=>{state[key]=control.value;if(onchange)onchange();changed();};
+        const commit=()=>{
+          state[key]=control.value;
+          if(onchange){onchange();draw();root.querySelector('#'+prefix+'-'+key)?.focus();}
+          changed();
+        };
+        control.onchange=commit;
+        control.addEventListener("keydown",e=>{
+          if(e.isComposing)return;
+          if(e.key==="ArrowDown" || e.key==="ArrowUp") {
+            e.preventDefault();e.stopPropagation();
+            const step=e.key==="ArrowDown"?1:-1;
+            control.selectedIndex=Math.max(0,Math.min(control.options.length-1,control.selectedIndex+step));
+            commit();
+          } else if(e.key==="Enter") {
+            e.preventDefault();e.stopPropagation();
+            if(!control.value){env.message(""+label+" را انتخاب کنید",true);return;}
+            focusNext(root.closest("form") || root,control);
+          }
+        });
         return control;
       };
-      const redraw=(focus)=>{draw();if(focus)requestAnimationFrame(()=>root.querySelectorAll("select,input")[1]?.focus());};
-      function parentChanged(){state.partyId="";state.partyText="";draw();requestAnimationFrame(()=>root.querySelector("[data-party-leaf]")?.focus());}
+      function parentChanged(){state.partyId="";state.partyText="";}
       function draw() {
         root.replaceChildren();
-        add("partyKind","گروه طرف حساب",Object.entries(options).map(([id,name])=>({id,name})),()=>{state.partyId="";state.partyText="";state.bankId="";state.groupId="";redraw(true);});
+        add("partyKind","گروه طرف حساب",Object.entries(options).map(([id,name])=>({id,name})),()=>{state.partyId="";state.partyText="";state.bankId="";state.groupId="";});
         const kind=state.partyKind;if(!kind)return;
         let list=[];
         if(kind==="banks") {
@@ -70,19 +87,46 @@ globalThis.SadraForms214 = {
           const c=add("partyId",label,list);c.dataset.partyLeaf="true";return;
         }
         const wrap=el("div",null,"party-search214"), control=input(state.partyText || list.find(x=>x.id===state.partyId)?.name || ""), results=el("div",null,"party-suggestions214");
-        control.id=prefix+"-partyId";control.dataset.partyLeaf="true";control.required=true;control.autocomplete="off";control.setAttribute("role","combobox");control.setAttribute("aria-autocomplete","list");control.setAttribute("aria-controls",prefix+"-results");results.id=prefix+"-results";results.setAttribute("role","listbox");results.hidden=true;
-        function choose(item){state.partyId=item.id;state.partyText=item.name;control.value=item.name;results.hidden=true;control.setAttribute("aria-expanded","false");changed();}
-        function matches(){const q=norm(control.value);return list.filter(x=>norm(x.name).includes(q));}
-        function suggest(){results.replaceChildren();const options=matches();for(const item of options.slice(0,20)){const option=btn(item.name,()=>{choose(item);control.focus();});option.tabIndex=-1;option.setAttribute("role","option");results.append(option);}results.hidden=!options.length || !control.value;control.setAttribute("aria-expanded",String(!results.hidden));}
-        function create(){const proposed=control.value.replace(/\+/g,"").trim();state.partyText=proposed;control.value=proposed;results.hidden=true;openEditor(kind,null,{name:proposed,groupId:state.groupId},saved=>{state.partyId=saved.id;state.partyText=saved.name;state.groupId=saved.groupId;changed();requestAnimationFrame(()=>requestAnimationFrame(()=>document.getElementById(prefix+"-partyId")?.focus()));});}
-        control.oninput=()=>{if(control.value.endsWith("++")){create();return;}state.partyText=control.value;state.partyId=list.find(x=>norm(x.name)===norm(control.value))?.id || "";suggest();changed();};
+        let query="", activeIndex=-1;
+        control.id=prefix+"-partyId";control.dataset.partyLeaf="true";control.required=true;control.autocomplete="off";control.setAttribute("role","combobox");control.setAttribute("aria-autocomplete","list");control.setAttribute("aria-expanded","false");control.setAttribute("aria-controls",prefix+"-results");results.id=prefix+"-results";results.setAttribute("role","listbox");results.hidden=true;
+        function hide(){results.hidden=true;control.setAttribute("aria-expanded","false");control.removeAttribute("aria-activedescendant");}
+        function choose(item){state.partyId=item.id;state.partyText=item.name;control.value=item.name;query="";hide();changed();}
+        function matches(){const q=norm(query);return list.filter(x=>norm(x.name).includes(q));}
+        function suggest(){
+          results.replaceChildren();const candidates=matches(),start=Math.max(0,activeIndex-9);
+          candidates.slice(start,start+20).forEach((item,offset)=>{
+            const index=start+offset, option=btn(item.name,()=>{choose(item);control.focus();});
+            option.id=prefix+"-option-"+index;option.tabIndex=-1;option.setAttribute("role","option");option.setAttribute("aria-selected",String(index===activeIndex));
+            option.addEventListener("mousedown",e=>e.preventDefault());results.append(option);
+          });
+          results.hidden=!candidates.length;control.setAttribute("aria-expanded",String(!results.hidden));
+          const selected=results.querySelector('[aria-selected="true"]');
+          if(selected){control.setAttribute("aria-activedescendant",selected.id);selected.scrollIntoView({block:"nearest"});}else control.removeAttribute("aria-activedescendant");
+        }
+        function create(){
+          const proposed=control.value.replace(/\+/g,"").trim();state.partyText=proposed;control.value=proposed;hide();
+          openEditor(kind,null,{name:proposed,groupId:state.groupId},saved=>{
+            state.partyId=saved.id;state.partyText=saved.name;state.groupId=saved.groupId;changed();
+            requestAnimationFrame(()=>requestAnimationFrame(()=>document.getElementById(prefix+"-partyId")?.focus()));
+          });
+        }
+        control.onfocus=()=>{query=state.partyId && list.some(x=>x.id===state.partyId && x.name===control.value)?"":control.value;activeIndex=matches().findIndex(x=>x.id===state.partyId);};
+        control.oninput=()=>{if(control.value.endsWith("++")){create();return;}query=control.value;activeIndex=-1;state.partyText=control.value;state.partyId=list.find(x=>norm(x.name)===norm(control.value))?.id || "";suggest();changed();};
         control.addEventListener("keydown",e=>{
-          if(e.key==="Escape"){results.hidden=true;return;}
-          if(e.key==="Enter") {e.preventDefault();e.stopPropagation();const item=list.find(x=>x.id===state.partyId)||matches()[0];if(item){choose(item);focusNext(root.closest("form") || root,control);}else env.message("موردی پیدا نشد؛ برای معرفی مورد جدید ++ بزنید",true);}
-          if(e.key==="ArrowDown"){e.preventDefault();const match=matches()[0];if(match)choose(match);}
+          if(e.isComposing)return;
+          if(e.key==="Escape"){e.preventDefault();e.stopPropagation();hide();return;}
+          if(e.key==="ArrowDown" || e.key==="ArrowUp") {
+            e.preventDefault();e.stopPropagation();const candidates=matches();
+            if(candidates.length){activeIndex=activeIndex<0?(e.key==="ArrowDown"?0:candidates.length-1):Math.max(0,Math.min(candidates.length-1,activeIndex+(e.key==="ArrowDown"?1:-1)));suggest();}
+            return;
+          }
+          if(e.key==="Enter") {
+            e.preventDefault();e.stopPropagation();const candidates=matches(),item=candidates[activeIndex] || candidates.find(x=>x.id===state.partyId) || candidates[0];
+            if(item){choose(item);focusNext(root.closest("form") || root,control);}else env.message("موردی پیدا نشد؛ برای معرفی مورد جدید ++ بزنید",true);
+          }
         });
-        control.onblur=()=>setTimeout(()=>{results.hidden=true;},180);
-        wrap.append(control,results);root.append(field(label,wrap));root.append(el("small","جست‌وجوی نام؛ برای افزودن مورد جدید دو بار کلید + را بزنید.","n-muted"));
+        control.onblur=hide;
+        wrap.append(control,results);root.append(field(label,wrap));root.append(el("small","انتخاب با ↑ و ↓ و تأیید با Enter؛ جست‌وجوی نام؛ افزودن مورد جدید با ++.","n-muted"));
       }
       draw();
     }
