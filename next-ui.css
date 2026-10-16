@@ -359,3 +359,8 @@ aside #groupsMenu200 button[data-next204="income"] { color: #ff6262 !important; 
 /* Version information follows every navigation item and fills spare sidebar height. */
 #app > aside { min-height: 100dvh; }
 aside .sadra-sidebar-version { margin-top: auto; padding-top: 18px; display: flex; flex-direction: column; gap: 5px; }
+
+/* Update 211: version belongs in the browser tab, not the navigation. */
+aside > small, aside .sadra-sidebar-version, aside button[data-page="audit"], aside button[data-next204="accounts"] { display: none !important; }
+aside #iranClock100 { margin: 4px 0 12px; text-align: center; font-variant-numeric: tabular-nums; }
+aside #iranClock100 strong { display: block; }
