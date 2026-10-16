@@ -50,6 +50,8 @@ globalThis.SadraNext = {
       pay: "پرداخت",
       transfer: "حواله / انتقال",
       opening: "افتتاحیه",
+      incomeClaim: "ثبت طلب درآمدی",
+      incomeReceipt: "دریافت طلب درآمدی",
       adjustment: "اصلاح موجودی",
       expense: "ثبت هزینه",
       income: "ثبت درآمد",
@@ -561,7 +563,7 @@ globalThis.SadraNext = {
         bar(
           el(
             "span",
-            "نسخهٔ آزمایشی ۲۰۵ · اطلاعات در همین مرورگر ذخیره می‌شوند",
+            "نسخهٔ آزمایشی ۲۰۶ · اطلاعات در همین مرورگر ذخیره می‌شوند",
             "n-muted",
           ),
           btn("دانلود پشتیبان", backup),
@@ -617,7 +619,7 @@ globalThis.SadraNext = {
       funds: ["funds"],
       banks: ["bankAccounts", "bankInstitutions"],
       expense: ["expenses", "expenseGroups"],
-      income: ["incomes", "incomeSources"],
+      income: ["incomes"],
       people: ["people", "peopleGroups"],
       goods: ["goods", "groups"],
       tags: ["tags"],
@@ -859,20 +861,7 @@ globalThis.SadraNext = {
           ref("groupId", "این هزینه مربوط به کجاست؟", "expenseGroups"),
         );
       }
-      if (kind === "incomes") {
-        fields[0].label = "نوع درآمد چیست؟";
-        fields.unshift(
-          ref(
-            "catalogNature",
-            "ماهیت درآمد",
-            null,
-            choices({ currency: "ارزی", commodity: "کالایی" }),
-          ),
-        );
-        fields.push(
-          ref("sourceId", "این درآمد مربوط به کجاست؟", "incomeSources"),
-        );
-      }
+      if (kind === "incomes") fields[0].label = "نام درآمد";
       if (kind === "groups")
         fields.push({
           key: "parentId",
@@ -930,7 +919,7 @@ globalThis.SadraNext = {
           fields.push(
             text("catalogPieceWeight", "وزن هر قطعه به گرم", "text", true),
           );
-        if (["count", "weightCount"].includes(v.catalogMode)) {
+        if (["count", "weightCount", "weight"].includes(v.catalogMode)) {
           fields.push(
             ref(
               "catalogHasFee",
@@ -946,16 +935,17 @@ globalThis.SadraNext = {
                 "نوع کارمزد",
                 null,
                 choices({
-                  fixed: "ثابت برای هر قطعه",
+                  fixed: "ثابت؛ تعیین در معرفی کالا",
                   variable: "متغیر؛ ورود در سند",
                 }),
               ),
             );
+            fields.push(ref("catalogFeeBasis", "مبنای کارمزد", null, choices({weightPercent: "درصدی از وزن کالا در فاکتور", perPiece: "مبلغ به‌ازای هر عدد"})));
             if (v.catalogFeeMode === "fixed")
               fields.push(
                 text(
                   "catalogFeeValue",
-                  "کارمزد ثابت هر قطعه (ریال)",
+                  v.catalogFeeBasis === "weightPercent" ? "درصد ثابت از وزن فاکتور" : "مبلغ ثابت هر عدد (ریال)",
                   "text",
                   true,
                 ),
@@ -992,6 +982,7 @@ globalThis.SadraNext = {
               catalogMode: "count",
               catalogHasFee: "no",
               catalogFeeMode: "fixed",
+              catalogFeeBasis: "perPiece",
             }
           : {}),
         ...(kind === "tags" ? { color: "#287d66" } : {}),
@@ -1074,6 +1065,7 @@ globalThis.SadraNext = {
                   "catalogMode",
                   "catalogHasFee",
                   "catalogFeeMode",
+                  "catalogFeeBasis",
                   "mode",
                   "nature",
                   "dimension",
@@ -1220,6 +1212,8 @@ globalThis.SadraNext = {
           dec(x.catalogFeeValue) < 0n
         )
           throw Error("کارمزد نمی‌تواند منفی باشد");
+        if (x.catalogHasFee === "yes" && !["perPiece", "weightPercent"].includes(x.catalogFeeBasis)) throw Error("مبنای کارمزد را انتخاب کنید");
+        if (x.catalogHasFee === "yes" && x.catalogFeeMode === "fixed" && x.catalogFeeBasis === "weightPercent" && dec(x.catalogFeeValue) > dec("100")) throw Error("درصد کارمزد نباید بیش از ۱۰۰ باشد");
         if (
           records("goods").some(
             (g) =>
@@ -1242,14 +1236,6 @@ globalThis.SadraNext = {
         });
         return;
       }
-      if (kind === "incomes" && !values.typeId) {
-        const type = ledger.s.incomeTypes.find(
-          (t) => t.active !== false && norm(t.name) === norm(values.name),
-        );
-        values.typeId =
-          type?.id ||
-          ledger.put("incomeTypes", { name: values.name, active: true }).id;
-      }
       ledger.put(modelKind(kind), values);
     }
     function catalogGood(x) {
@@ -1271,10 +1257,11 @@ globalThis.SadraNext = {
               )?.id || x.standardWeightUnitId,
             )
           : "",
-        catalogHasFee: ["fixed", "variable"].includes(x.feeMode) ? "yes" : "no",
+        catalogHasFee: ["fixed", "variable", "gold"].includes(x.feeMode) ? "yes" : "no",
+        catalogFeeBasis: x.feeMode === "gold" ? "weightPercent" : "perPiece",
         catalogFeeMode: x.feeMode === "variable" ? "variable" : "fixed",
         catalogFeeValue:
-          x.feeMode === "fixed" ? mul(x.feeValue || "0", "10") : "",
+          x.feeMode === "gold" ? x.feePercent : x.feeMode === "fixed" ? mul(x.feeValue || "0", "10") : "",
         ...((ledger.s.catalogGoods || []).find((g) => g.id === x.id) || {}),
       };
     }
@@ -1306,8 +1293,6 @@ globalThis.SadraNext = {
         ids = [["groupId", "peopleGroups", "انتخاب گروه افراد"]];
       if (["expenses", "expenseHeads"].includes(tab))
         ids = [["groupId", "expenseGroups", "همهٔ دسته‌ها"]];
-      if (tab === "incomes")
-        ids = [["sourceId", "incomeSources", "همهٔ منابع"]];
       if (tab === "goods") ids = [["groupId", "groups", "همهٔ گروه‌ها"]];
       for (const [key, kind, label] of ids) {
         const s = select(fieldOptions(kind, true), filter[key], label);
@@ -1440,13 +1425,7 @@ globalThis.SadraNext = {
                           ? " / " + name("expenseHeads", x.parentId)
                           : "")
                       : tab === "incomes"
-                        ? name("incomeSources", x.sourceId) +
-                          " · " +
-                          (x.catalogNature === "commodity"
-                            ? "کالایی"
-                            : x.catalogNature === "currency"
-                              ? "ارزی"
-                              : "ماهیت تعیین نشده")
+                        ? ""
                         : tab === "goods"
                           ? name("groups", x.groupId) +
                             " · " +
@@ -1463,10 +1442,8 @@ globalThis.SadraNext = {
                               : "") +
                             (x.catalogHasFee === "yes"
                               ? x.catalogFeeMode === "fixed"
-                                ? " · کارمزد ثابت " +
-                                  f(x.catalogFeeValue) +
-                                  " ریال"
-                                : " · کارمزد متغیر هر قطعه در سند"
+                                ? " · کارمزد ثابت " + f(x.catalogFeeValue) + (x.catalogFeeBasis === "weightPercent" ? " درصد از وزن فاکتور" : " ریال هر عدد")
+                                : " · کارمزد متغیر " + (x.catalogFeeBasis === "weightPercent" ? "درصدی از وزن فاکتور" : "مبلغ هر عدد") + " در سند"
                               : "")
                           : tab === "units"
                             ? dims[x.dimension] +
@@ -1646,10 +1623,45 @@ globalThis.SadraNext = {
         btn("ایجاد برچسب جدید", () => edit("tags")),
       );
     }
+    function incomeDialog(receipt) {
+      const d = el("dialog"), form = el("form"), grid = el("div", null, "n-grid"), error = el("div", "", "n-error");
+      const v = {token: uid(), date: new Date().toISOString().slice(0,10), tags: []};
+      const fieldInput = (key, label, options) => {
+        const control = options ? select(options) : input("");
+        control.id = "n-income-" + key; control.required = true;
+        control.oninput = control.onchange = () => {v[key] = control.value;};
+        grid.append(field(label,control)); return control;
+      };
+      if (!receipt) {
+        fieldInput("income", "نام درآمد", fieldOptions("incomes"));
+        fieldInput("person", "شخص یا فروشگاه بدهکار", fieldOptions("people"));
+        fieldInput("good", "دارایی طلب", fieldOptions("goods"));
+        fieldInput("quantity", "مقدار طلب به واحد دارایی انتخاب‌شده");
+      } else {
+        const claims = ledger.s.documents.filter(x => x.type === "incomeClaim" && !ledger.s.documents.some(r => r.reversalOf === x.id));
+        const claimControl = fieldInput("claim", "طلب درآمدی", claims.filter(x=>dec(ledger.incomeRemaining(x.id))>0n).map(x=>({id:x.id,name:name("incomes",x.income)+" · "+name("people",x.person)+" · مانده "+f(ledger.incomeRemaining(x.id))+" "+name("goods",x.good)})));
+        const actualGood = fieldInput("good", "دارایی دریافت‌شده", fieldOptions("goods"));
+        fieldInput("quantity", "مقدار دریافت‌شده به واحد دارایی انتخاب‌شده");
+        fieldInput("fund", "صندوق یا حساب بانکی مقصد", fieldOptions("funds").concat(fieldOptions("banks")));
+        const rate = fieldInput("rate", "نرخ توافق: هر واحد دارایی دریافتی معادل چند واحد از دارایی طلب است؟");
+        const agreement = fieldInput("agreement", "شرح توافق تبدیل، اگر دارایی متفاوت است");
+        rate.required = false; agreement.required = false;
+        grid.append(el("p", "برای دریافت همان دارایی نیازی به نرخ نیست. برای دارایی متفاوت، نرخ و توافق تبدیل الزامی است.", "n-muted"));
+        claimControl.addEventListener("change",()=>{const claim=claims.find(x=>x.id===claimControl.value);if(claim){actualGood.value=claim.good;v.good=claim.good;}});
+      }
+      common(v, grid);
+      const submit = el("button", "ثبت", "primary"); submit.type="submit"; submit.disabled=migrationNotice;
+      form.append(grid,error,bar(submit,btn("انصراف",()=>d.close())));
+      form.onsubmit=e=>{e.preventDefault();try{if(migrationNotice)throw Error("ابتدا مانده‌های انتقالی را بررسی کنید");const doc=receipt?ledger.receiveIncome(v):ledger.claimIncome(v);d.close();render();showDocument(doc.id);}catch(e){error.textContent=e.message;}};
+      d.append(el("h3",receipt?"دریافت کامل یا بخشی از طلب درآمدی":"ثبت طلب درآمدی بدون افزایش موجودی"),form);host.append(d);d.onclose=()=>d.remove();d.showModal();
+    }
     function operations() {
+      host.append(bar(btn("ثبت طلب درآمدی", () => incomeDialog(false)), btn("دریافت طلب درآمدی", () => incomeDialog(true))));
+      const incomeClaims = ledger.s.documents.filter(d => d.type === "incomeClaim" && !ledger.s.documents.some(r => r.reversalOf === d.id));
+      if (incomeClaims.length) host.append(card(el("h3", "طلب‌ها و دریافت‌های درآمدی"), table(["درآمد", "بدهکار", "دارایی", "اصل طلب", "دریافت‌شده", "مانده"], incomeClaims.map(d=>({cells:[name("incomes",d.income),name("people",d.person),name("goods",d.good),f(d.quantity),f(sub(d.quantity,ledger.incomeRemaining(d.id))),f(ledger.incomeRemaining(d.id))]})))));
       const mode = filter.op || "buy",
         type = select(
-          choices(types).filter((x) => !["legacy", "reversal"].includes(x.id)),
+          choices(types).filter((x) => !["legacy", "reversal", "incomeClaim", "incomeReceipt"].includes(x.id)),
           mode,
           null,
         );
@@ -3515,7 +3527,7 @@ globalThis.SadraNext = {
     );
     document.querySelectorAll("aside small").forEach((e) => {
       if (e.textContent.includes("۲۰۳"))
-        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۵";
+        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۶";
     });
     const menu =
       document.getElementById("groupsMenu200") ||
@@ -3551,6 +3563,7 @@ globalThis.SadraNext = {
       let b = document.querySelector('aside button[data-page="' + r + '"]');
       if (b) b.textContent = title;
     }
+    document.getElementById("introductionMenu")?.remove();
     // Stop legacy invoice shortcuts from posting hidden forms while a new screen is active.
     window.addEventListener(
       "keydown",
@@ -3563,9 +3576,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۵";
+    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۶";
     window.addEventListener("load", () => {
-      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۵";
+      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۶";
     });
     const api = {
       go,
