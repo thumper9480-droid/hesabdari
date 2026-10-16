@@ -52,6 +52,8 @@ globalThis.SadraNext = {
       transfer: "حواله / انتقال",
       opening: "افتتاحیه",
       installmentOpen: "ثبت تعهد اقساط",
+      installmentReceive: "دریافت قسط",
+      installmentPay: "پرداخت قسط",
       incomeClaim: "ثبت طلب درآمدی",
       incomeReceipt: "دریافت طلب درآمدی",
       adjustment: "اصلاح موجودی",
@@ -977,7 +979,7 @@ globalThis.SadraNext = {
       }
       return fields;
     }
-    function edit(kind, item, preset = {}, afterSave) {
+    function edit(kind, item, preset = {}, afterSave, options = {}) {
       const d = el("dialog"),
         title = el("h3", (item ? "ویرایش " : "ایجاد ") + names[kind]),
         form = el("form"),
@@ -1007,7 +1009,7 @@ globalThis.SadraNext = {
       if (kind === "people" && filter.groupId) values.groupId = filter.groupId;
       const draw = () => {
         grid.replaceChildren();
-        for (const spec of schema(kind, values)) {
+        for (const spec of schema(kind, values).filter(spec=>!options.nameOnly || spec.key === "name")) {
           let control;
           if (spec.type === "select") {
             const items = [...spec.items];
@@ -1179,10 +1181,12 @@ globalThis.SadraNext = {
               values.accountNumber +
               " / " +
               name("assets", values.assetId);
+          if (options.nameOnly && kind === "expenses") values.groupId = preset.groupId;
           const saved = saveCatalog(kind, values);
           d.close();
-          if (afterSave) afterSave(saved);
+          const focusAfterSave = afterSave ? afterSave(saved) : null;
           render();
+          if (typeof focusAfterSave === "string") document.getElementById(focusAfterSave)?.focus();
           message("اطلاعات ذخیره شد");
         } catch (e) {
           error.className = "n-error";
@@ -2114,7 +2118,7 @@ globalThis.SadraNext = {
       const d = ledger.find("documents", id),
         dialog = el("dialog");
       dialog.append(
-        el("h3", "سند " + f(d.number) + " · " + types[d.type]),
+        el("h3", "سند " + f(d.invoiceNumber || d.number) + " · " + types[d.type]),
         el("p", d.date + " · " + d.notes),
         tags(d.tags),
       );
@@ -3006,7 +3010,7 @@ globalThis.SadraNext = {
           (!filter.incomeType || income?.typeId === filter.incomeType) &&
           (!filter.type || e.type === filter.type) &&
           (!filter.bucket || e.bucket === filter.bucket) &&
-          (!filter.number || String(d.number) === String(filter.number)) &&
+          (!filter.number || String(d.invoiceNumber || d.number) === String(filter.number)) &&
           (!filter.q || norm(e.notes).includes(norm(filter.q))) &&
           (!filter.purity || e.purity === filter.purity) &&
           (!filter.min || abs >= dec(filter.min)) &&
@@ -3046,7 +3050,7 @@ globalThis.SadraNext = {
           u = g.unit || unit(g.unitId);
         return [
           e.date || e.originalDate || "تاریخ ثبت نشده",
-          d.number,
+          d.invoiceNumber || d.number,
           types[e.type] || e.type,
           {
             stock: "موجودی",
@@ -3319,7 +3323,7 @@ globalThis.SadraNext = {
       }
     }
     function installmentReport() {
-      const source = [...(bridge.installments?.() || []), ...(ledger.s.installmentContracts214 || []).flatMap(c=>c.dues.map((item,index)=>({contract:c.id,person:c.partyKind === "people" ? c.partyId : "",party:c.partyName,title:c.title,number:index+1,date:item.jalali,total:item.amount,remaining:c.accountDocumentId && ledger.s.documents.some(d=>d.reversalOf===c.accountDocumentId)?"0":item.amount,unit:c.unit.name,good:c.good})))];
+      const source = [...(bridge.installments?.() || []), ...(ledger.s.installmentContracts214 || []).flatMap(c=>c.dues.map((item,index)=>({contract:c.id,person:c.partyKind === "people" ? c.partyId : "",party:c.partyName,title:c.title,number:index+1,date:item.jalali,total:item.amount,remaining:ledger.installmentRemaining216(c.id,item.id),unit:c.unit.name,good:c.good})))];
       if (!source.length) return;
       const control = select(
         choices({
@@ -3633,9 +3637,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۵";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۶";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۵";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۶";
     });
     const api = {
       go,
@@ -3689,6 +3693,7 @@ globalThis.SadraNext = {
       el,btn,field,select,input,bar,card,table,f,name,host,legacyDate,
       ledger:()=>ledger,raw,openEditor:edit,rerender:render,message,
       needsReview:()=>migrationNotice,
+      showDocument,
       openReview:()=>go("funds"),
       legacyInstallments:()=>bridge.installments?.() || [],
       openLegacyInstallments:()=>bridge.openLegacyInstallments?.(),
