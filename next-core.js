@@ -168,7 +168,7 @@
         this.s.documents.some(
           (d) =>
             d.entries.some(
-              (e) => e.good === id || e.account === id || e.lot === id,
+              (e) => e.good === id || e.account === id || e.lot === id || e.lineTags?.includes(id),
             ) ||
             d.tags?.includes(id) ||
             d.good === id ||
@@ -632,7 +632,7 @@
           date: d.date,
           type: d.type,
           notes: d.notes,
-          tags: d.tags,
+          tags: [...new Set([...(d.tags || []), ...(e.lineTags || [])])],
           snapshot: d.snapshots?.[e.good],
           reversalOf: d.reversalOf,
           at: d.created,
@@ -703,7 +703,13 @@
         throw Error("این درخواست قبلاً ثبت شده است");
       const meta = this.metadata(input),
         snapshots = {};
+      const requestedLineTags = input.lineTags || [];
+      if (!Array.isArray(requestedLineTags)) throw Error("برچسب سطر نامعتبر است");
+      for (const tagId of requestedLineTags) this.find("tags", tagId, true);
       for (const e of entries) {
+        if (e.lineTags && !Array.isArray(e.lineTags)) throw Error("برچسب سطر نامعتبر است");
+        e.lineTags = [...new Set([...(e.lineTags || []), ...requestedLineTags])];
+        for (const tagId of e.lineTags) this.find("tags", tagId);
         const g = this.find("goods", e.good);
         e.quantity = this.precision(e.quantity, g.unitId);
         snapshots[g.id] = {

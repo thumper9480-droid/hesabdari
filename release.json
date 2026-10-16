@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 209,
+  "update": 210,
   "date": "2026-10-16",
   "type": "browser",
-  "label": "انتقال برچسب‌ها از گروه‌ها به منوی اصلی",
+  "label": "ترتیب منوها، اطلاعات نسخه در پایین و برچسب سند و سطر",
   "entry": "index.html",
   "assets": [
     "next-core.js",
