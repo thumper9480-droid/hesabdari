@@ -3534,80 +3534,65 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.querySelectorAll("aside small").forEach((e) => {
-      if (e.textContent.includes("۲۰۳"))
-        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۱۱";
-    });
-    const menu =
-      document.getElementById("groupsMenu200") ||
-      document.querySelector("aside");
-    for (const next of [
-      "funds",
-      "expense",
-      "income",
-      "people",
-      "goods",
-      "tags",
-      "banks",
-    ]) {
-      let b = [...menu.querySelectorAll("button")].find(
-        (b) => integrations[b.dataset.page] === next,
-      );
-      if (!b) {
-        b = btn(labels[next], () => go(next));
-        menu.append(b);
-      }
-      b.dataset.next204 = next;
-      b.textContent = labels[next];
-    }
-    for (const r of ["accounts", "settings"]) {
-      const b = btn(labels[r], () => go(r));
-      b.dataset.next204 = r;
-      document.querySelector("aside").append(b);
-    }
-    for (const [r, title] of [
-      ["units", "معرفی واحدها"],
-      ["assets", "معرفی دارایی‌ها"],
-    ]) {
-      let b = document.querySelector('aside button[data-page="' + r + '"]');
-      if (b) b.textContent = title;
-    }
-    // Update 208: move the existing buttons so their handlers and data survive.
-    const sidebar208 = document.querySelector("aside");
-    for (const route208 of ["people", "goods", "tags"]) {
-      const button208 = menu.querySelector('button[data-next204="' + route208 + '"]');
-      if (button208 && menu !== sidebar208) sidebar208.insertBefore(button208, menu);
-    }
-    const installments208 = sidebar208.querySelector('button[data-page="installments"]');
-    if (installments208) menu.append(installments208);
-    const opening208 = sidebar208.querySelector('button[data-page="opening"]');
-    if (opening208) {
-      const texts208 = document.createTreeWalker(opening208, NodeFilter.SHOW_TEXT);
-      while (texts208.nextNode()) texts208.currentNode.nodeValue = texts208.currentNode.nodeValue.replace("سند اولیه", "سرمایه اولیه");
-      opening208.setAttribute("aria-label", "سرمایه اولیه");
-    }
-    // Update 210: reorder existing destinations; restore requested unit/asset links.
-    const sidebar210 = document.querySelector("aside");
-    sidebar210.querySelectorAll('button[data-next204="accounts"]').forEach(b => b.remove());
-    const unit210 = sidebar210.querySelector('button[data-page="units"]') || btn("معرفی واحدها", () => go("units"));
-    unit210.dataset.next204 = "units"; unit210.textContent = "معرفی واحدها";
-    const asset210 = sidebar210.querySelector('button[data-page="assets"]') || btn("معرفی نوع دارایی", () => go("assets"));
-    asset210.dataset.next204 = "assets"; asset210.textContent = "معرفی نوع دارایی";
-    sidebar210.append(unit210, asset210);
-    const get210 = (page, route) => sidebar210.querySelector('button[data-page="' + page + '"]') || sidebar210.querySelector('button[data-next204="' + route + '"]');
-    const report210 = get210("reports", "reports");
-    if (report210) report210.textContent = "گزارش‌ها";
-    const order210 = [get210("invoice", "operations"), get210("portfolio", "portfolio"), get210("reconcile", "inventory"), report210, menu, get210("opening", "opening"), get210("directory", "people"), get210("goods", "goods"), unit210, asset210].filter(Boolean);
-    const remaining210 = [...sidebar210.children].filter(e => (e.matches("button, details")) && !order210.includes(e) && e.id !== "introductionMenu");
-    sidebar210.append(...order210, ...remaining210);
-    sidebar210.querySelectorAll('button[data-page="audit"], button[data-next204="accounts"], .sadra-sidebar-version, :scope > small').forEach(e => e.remove());
-    const update211 = sidebar210.querySelector('button[data-page="update"]');
-    const backup211 = sidebar210.querySelector('button[data-page="backup"]');
-    if (update211 && backup211) update211.after(backup211);
-    const logo211 = document.getElementById("sadralogo");
-    const clock211 = document.getElementById("iranClock100");
-    if (logo211 && clock211) logo211.after(clock211);
-    document.getElementById("introductionMenu")?.remove();
+    // Change 1 / Update 212: build the confirmed navigation once, preserving destinations.
+    const sidebar212 = document.querySelector("aside");
+    const originalButtons212 = [...sidebar212.querySelectorAll("button")];
+    const screenButton212 = (route, page, title) => {
+      let button = originalButtons212.find(b => b.dataset.next204 === route || b.dataset.page === page);
+      if (!button) button = btn(title, () => go(route));
+      button.dataset.next204 = route;
+      button.dataset.page = page;
+      button.textContent = title;
+      return button;
+    };
+    const nativeButton212 = (page, title) => {
+      const button = originalButtons212.find(b => b.dataset.page === page);
+      if (!button) throw Error("گزینهٔ منو یافت نشد: " + title);
+      button.textContent = title;
+      return button;
+    };
+    const group212 = document.createElement("details"); group212.id = "groupsMenu200"; group212.className = "sadra-navigation-section";
+    const introductions212 = document.createElement("details"); introductions212.id = "sadraIntroductionsMenu"; introductions212.className = "sadra-navigation-section";
+    const information212 = document.createElement("details"); information212.id = "sadraInformationMenu"; information212.className = "sadra-navigation-section";
+    const populate212 = (section, title, buttons) => {
+      const summary = el("summary", title); summary.setAttribute("aria-label", title);
+      section.append(summary, ...buttons);
+    };
+    populate212(group212, "گروه‌ها", [
+      screenButton212("banks", "banks", "بانک‌ها"),
+      screenButton212("funds", "funds", "صندوق‌ها"),
+      screenButton212("expense", "expense", "هزینه‌ها"),
+      screenButton212("income", "income", "درآمد"),
+      nativeButton212("installments", "اقساط"),
+      screenButton212("people", "directory", "افراد"),
+    ]);
+    populate212(introductions212, "معرفی‌ها", [
+      screenButton212("goods", "goods", "معرفی کالاها"),
+      screenButton212("units", "units", "معرفی واحدها"),
+      screenButton212("assets", "assets", "معرفی دارایی"),
+      screenButton212("tags", "tags", "معرفی برچسب‌ها"),
+    ]);
+    populate212(information212, "اطلاعات", [
+      screenButton212("settings", "settings", "تنظیمات و سوابق"),
+      nativeButton212("backup", "پشتیبانی و بازیابی"),
+      nativeButton212("update", "آپدیت‌ها"),
+    ]);
+    const ordered212 = [
+      nativeButton212("portfolio", "برنامه"),
+      screenButton212("inventory", "reconcile", "موجودی"),
+      nativeButton212("opening", "سرمایه اولیه"),
+      screenButton212("operations", "invoice", "ثبت سند"),
+      screenButton212("reports", "reports", "گزارش‌ها"),
+      group212, introductions212, information212,
+    ];
+    const clock212 = document.getElementById("iranClock100");
+    const exit212 = originalButtons212.find(b => b.textContent.includes("خروج"));
+    if (exit212) exit212.textContent = "خروج";
+    // Remove only obsolete navigation nodes; financial state and handlers remain intact.
+    sidebar212.querySelectorAll(":scope > button, :scope > details, :scope > small, :scope > hr, :scope > .sadra-sidebar-version").forEach(e => e.remove());
+    sidebar212.append(...ordered212);
+    if (clock212) sidebar212.append(clock212);
+    if (exit212) sidebar212.append(exit212);
     // Stop legacy invoice shortcuts from posting hidden forms while a new screen is active.
     window.addEventListener(
       "keydown",
@@ -3620,9 +3605,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۱";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۲";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۱";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۲";
     });
     const api = {
       go,
