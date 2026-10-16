@@ -563,7 +563,7 @@ globalThis.SadraNext = {
         bar(
           el(
             "span",
-            "نسخهٔ آزمایشی ۲۱۰ · اطلاعات در همین مرورگر ذخیره می‌شوند",
+            "اطلاعات در همین مرورگر ذخیره می‌شوند",
             "n-muted",
           ),
           btn("دانلود پشتیبان", backup),
@@ -3536,7 +3536,7 @@ globalThis.SadraNext = {
     );
     document.querySelectorAll("aside small").forEach((e) => {
       if (e.textContent.includes("۲۰۳"))
-        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۱۰";
+        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۱۱";
     });
     const menu =
       document.getElementById("groupsMenu200") ||
@@ -3599,14 +3599,14 @@ globalThis.SadraNext = {
     if (report210) report210.textContent = "گزارش‌ها";
     const order210 = [get210("invoice", "operations"), get210("portfolio", "portfolio"), get210("reconcile", "inventory"), report210, menu, get210("opening", "opening"), get210("directory", "people"), get210("goods", "goods"), unit210, asset210].filter(Boolean);
     const remaining210 = [...sidebar210.children].filter(e => (e.matches("button, details")) && !order210.includes(e) && e.id !== "introductionMenu");
-    const footer210 = el("div", null, "sadra-sidebar-version");
-    const stamps210 = [...sidebar210.querySelectorAll(":scope > small")];
-    if (stamps210.length) {stamps210[0].textContent="نسخه ۵.۹.۱"; footer210.append(stamps210[0]);}
-    else footer210.append(el("small", "نسخه ۵.۹.۱"));
-    if (stamps210.length > 1) {stamps210[1].textContent="نسخه مرورگر · آپدیت ۲۱۰"; footer210.append(stamps210[1]);}
-    else footer210.append(el("small", "نسخه مرورگر · آپدیت ۲۱۰"));
-    for (const extra210 of stamps210.slice(2)) footer210.append(extra210);
-    sidebar210.append(...order210, ...remaining210, footer210);
+    sidebar210.append(...order210, ...remaining210);
+    sidebar210.querySelectorAll('button[data-page="audit"], button[data-next204="accounts"], .sadra-sidebar-version, :scope > small').forEach(e => e.remove());
+    const update211 = sidebar210.querySelector('button[data-page="update"]');
+    const backup211 = sidebar210.querySelector('button[data-page="backup"]');
+    if (update211 && backup211) update211.after(backup211);
+    const logo211 = document.getElementById("sadralogo");
+    const clock211 = document.getElementById("iranClock100");
+    if (logo211 && clock211) logo211.after(clock211);
     document.getElementById("introductionMenu")?.remove();
     // Stop legacy invoice shortcuts from posting hidden forms while a new screen is active.
     window.addEventListener(
@@ -3620,9 +3620,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۱۰";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۱";
     window.addEventListener("load", () => {
-      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۱۰";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۱";
     });
     const api = {
       go,

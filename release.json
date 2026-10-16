@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 210,
+  "update": 211,
   "date": "2026-10-16",
   "type": "browser",
-  "label": "ترتیب منوها، اطلاعات نسخه در پایین و برچسب سند و سطر",
+  "label": "تاریخ و ساعت زیر لوگو، نسخه در تب و اصلاح منوها",
   "entry": "index.html",
   "assets": [
     "next-core.js",
