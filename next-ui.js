@@ -563,7 +563,7 @@ globalThis.SadraNext = {
         bar(
           el(
             "span",
-            "نسخهٔ آزمایشی ۲۰۸ · اطلاعات در همین مرورگر ذخیره می‌شوند",
+            "نسخهٔ آزمایشی ۲۰۹ · اطلاعات در همین مرورگر ذخیره می‌شوند",
             "n-muted",
           ),
           btn("دانلود پشتیبان", backup),
@@ -3527,7 +3527,7 @@ globalThis.SadraNext = {
     );
     document.querySelectorAll("aside small").forEach((e) => {
       if (e.textContent.includes("۲۰۳"))
-        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۸";
+        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۹";
     });
     const menu =
       document.getElementById("groupsMenu200") ||
@@ -3565,7 +3565,7 @@ globalThis.SadraNext = {
     }
     // Update 208: move the existing buttons so their handlers and data survive.
     const sidebar208 = document.querySelector("aside");
-    for (const route208 of ["people", "goods"]) {
+    for (const route208 of ["people", "goods", "tags"]) {
       const button208 = menu.querySelector('button[data-next204="' + route208 + '"]');
       if (button208 && menu !== sidebar208) sidebar208.insertBefore(button208, menu);
     }
@@ -3590,9 +3590,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۸";
+    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۹";
     window.addEventListener("load", () => {
-      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۸";
+      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۹";
     });
     const api = {
       go,
