@@ -398,7 +398,8 @@
                 "واحد پول حساب دارای سند قابل تغییر نیست؛ حساب جدید تعریف کنید",
               );
           } else {
-            this.find("locations", x.locationId, true);
+            if (x.locationId && (!old || x.locationId !== old.locationId))
+              this.find("locations", x.locationId, true);
             const t = this.find("fundTypes", x.typeId, true);
             x.nature = t.nature;
           }
@@ -431,8 +432,8 @@
         }
         if (kind === "expenses") {
           this.find("expenseGroups", x.groupId, true);
-          const h = this.find("expenseHeads", x.headId, true);
-          if (h.groupId !== x.groupId)
+          const h = x.headId ? this.find("expenseHeads", x.headId, true) : null;
+          if (h && h.groupId !== x.groupId)
             throw Error("سرفصل متعلق به دسته انتخاب‌شده نیست");
         }
         if (kind === "incomes") {

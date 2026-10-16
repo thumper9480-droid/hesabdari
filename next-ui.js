@@ -26,10 +26,10 @@ globalThis.SadraNext = {
       locations: "محل‌های نگهداری",
       fundTypes: "انواع صندوق",
       funds: "صندوق‌ها",
-      expenseGroups: "دسته‌های هزینه",
+      expenseGroups: "محل‌های هزینه",
       expenseHeads: "سرفصل‌ها و زیرسرفصل‌ها",
       expenses: "حساب‌های هزینه",
-      incomeSources: "منابع درآمد",
+      incomeSources: "محل‌های درآمد",
       incomeTypes: "انواع درآمد",
       incomes: "حساب‌های درآمد",
       peopleGroups: "گروه‌های افراد",
@@ -561,7 +561,7 @@ globalThis.SadraNext = {
         bar(
           el(
             "span",
-            "نسخهٔ آزمایشی ۲۰۴ · اطلاعات در همین مرورگر ذخیره می‌شوند",
+            "نسخهٔ آزمایشی ۲۰۵ · اطلاعات در همین مرورگر ذخیره می‌شوند",
             "n-muted",
           ),
           btn("دانلود پشتیبان", backup),
@@ -614,10 +614,10 @@ globalThis.SadraNext = {
       }
     }
     const submenus = {
-      funds: ["funds", "locations", "fundTypes"],
+      funds: ["funds"],
       banks: ["bankAccounts", "bankInstitutions"],
-      expense: ["expenses", "expenseGroups", "expenseHeads"],
-      income: ["incomes", "incomeSources", "incomeTypes"],
+      expense: ["expenses", "expenseGroups"],
+      income: ["incomes", "incomeSources"],
       people: ["people", "peopleGroups"],
       goods: ["goods", "groups"],
       tags: ["tags"],
@@ -827,8 +827,14 @@ globalThis.SadraNext = {
         );
       if (kind === "funds")
         fields.push(
-          ref("locationId", "محل نگهداری", "locations"),
-          ref("typeId", "نوع صندوق", "fundTypes"),
+          ref(
+            "typeId",
+            "نوع صندوق",
+            null,
+            active("fundTypes").filter((t) =>
+              ["currency", "commodity"].includes(t.nature),
+            ),
+          ),
         );
       if (kind === "people")
         fields.push(
@@ -847,21 +853,26 @@ globalThis.SadraNext = {
           ),
         });
       }
-      if (kind === "expenses")
-        fields.push(
-          ref("groupId", "دستهٔ اصلی هزینه", "expenseGroups"),
+      if (kind === "expenses") {
+        fields[0].label = "این هزینه چیست؟";
+        fields.unshift(
+          ref("groupId", "این هزینه مربوط به کجاست؟", "expenseGroups"),
+        );
+      }
+      if (kind === "incomes") {
+        fields[0].label = "نوع درآمد چیست؟";
+        fields.unshift(
           ref(
-            "headId",
-            "سرفصل / زیرسرفصل",
+            "catalogNature",
+            "ماهیت درآمد",
             null,
-            active("expenseHeads").filter((x) => x.groupId === v.groupId),
+            choices({ currency: "ارزی", commodity: "کالایی" }),
           ),
         );
-      if (kind === "incomes")
         fields.push(
-          ref("sourceId", "منبع درآمد", "incomeSources"),
-          ref("typeId", "نوع درآمد", "incomeTypes"),
+          ref("sourceId", "این درآمد مربوط به کجاست؟", "incomeSources"),
         );
+      }
       if (kind === "groups")
         fields.push({
           key: "parentId",
@@ -869,11 +880,6 @@ globalThis.SadraNext = {
           type: "select",
           items: active("groups").filter((x) => !x.parentId && x.id !== v.id),
         });
-      if (kind === "tags")
-        fields.push(
-          text("color", "کد رنگ HEX"),
-          text("description", "توضیحات"),
-        );
       if (kind === "units")
         fields.push(
           text("symbol", "نماد"),
@@ -905,118 +911,72 @@ globalThis.SadraNext = {
           text("description", "توضیحات"),
         );
       if (kind === "goods") {
+        fields.push(ref("groupId", "گروه کالا", "groups"));
         fields.push(
-          text("code", "کد کالا"),
-          text("shortName", "نام اختصاری"),
-          {
-            ...ref(
-              "groupId",
-              "گروه کالا",
-              "groups",
-              active("groups").filter((g) => !g.parentId),
-            ),
-            required: false,
-          },
-          {
-            key: "subgroupId",
-            label: "زیرگروه",
-            type: "select",
-            items: active("groups").filter((g) => g.parentId === v.groupId),
-          },
-          ref("assetId", "دارایی پایه", "assets"),
-          {
-            ...ref("assetTypeId", "نوع دارایی", "assetTypes"),
-            required: false,
-          },
-          ref("mode", "ماهیت و مبنای اصلی موجودی / بدهی", null, choices(modes)),
           ref(
-            "unitId",
-            "واحد موجودی",
+            "catalogMode",
+            "نوع کالا",
             null,
-            active("units").filter((u) => u.dimension === v.mode),
-          ),
-          ref(
-            "rateUnitId",
-            "واحد نرخ فاکتور",
-            null,
-            active("units").filter(
-              (u) =>
-                u.dimension === v.mode &&
-                (v.mode === "weight" || u.id === v.unitId),
-            ),
+            choices({
+              count: "تعدادی",
+              weightCount: "وزنی–تعدادی",
+              weight: "وزنی",
+            }),
           ),
         );
-        if (v.mode === "weight")
+        if (["weight", "weightCount"].includes(v.catalogMode))
+          fields.push(text("catalogPurity", "عیار", "text", true));
+        if (v.catalogMode === "weightCount")
           fields.push(
-            text("standardWeight", "وزن استاندارد هر قطعه (اختیاری)"),
-            {
-              ...ref(
-                "standardWeightUnitId",
-                "واحد وزن استاندارد",
-                "units",
-                active("units").filter((u) => u.dimension === "weight"),
-              ),
-              required: false,
-            },
-            text(
-              "allowActual",
-              "اجازهٔ ثبت وزن واقعی جدا از استاندارد",
-              "checkbox",
-            ),
+            text("catalogPieceWeight", "وزن هر قطعه به گرم", "text", true),
           );
-        if (v.mode !== "currency")
-          fields.push(
-            text("metal", "نوع فلز (در صورت نیاز)"),
-            text("purity", "عیار در مقیاس ۱۰۰۰ (اختیاری)"),
-          );
-        if (v.mode !== "currency") {
+        if (["count", "weightCount"].includes(v.catalogMode)) {
           fields.push(
             ref(
-              "feeMode",
-              "روش کارمزد",
+              "catalogHasFee",
+              "آیا کارمزد دارد؟",
               null,
-              choices(
-                Object.fromEntries(
-                  Object.entries(fees).filter(
-                    ([id]) => v.mode === "weight" || id !== "gold",
-                  ),
-                ),
-              ),
+              choices({ no: "خیر", yes: "بله" }),
             ),
           );
-          if (["fixed", "variable"].includes(v.feeMode))
+          if (v.catalogHasFee === "yes") {
             fields.push(
               ref(
-                "feeGoodId",
-                "دارایی تومانی کارمزد",
+                "catalogFeeMode",
+                "نوع کارمزد",
                 null,
-                active("goods").filter(
-                  (g) =>
-                    g.mode === "currency" &&
-                    unit(ledger.find("assets", g.assetId).unitId)
-                      ?.currencyCode === "IRT",
-                ),
+                choices({
+                  fixed: "ثابت برای هر قطعه",
+                  variable: "متغیر؛ ورود در سند",
+                }),
               ),
             );
-          if (v.feeMode === "fixed")
-            fields.push(
-              text("feeValue", "کارمزد ثابت هر قطعه (تومان)", "text", true),
-            );
-          if (v.feeMode === "gold")
-            fields.push(
-              text("feePercent", "درصد کارمزد طلایی", "text", true),
-              text("allowFeeOverride", "اجازهٔ تغییر درصد در سند", "checkbox"),
-            );
+            if (v.catalogFeeMode === "fixed")
+              fields.push(
+                text(
+                  "catalogFeeValue",
+                  "کارمزد ثابت هر قطعه (ریال)",
+                  "text",
+                  true,
+                ),
+              );
+          }
         }
-        fields.push(
-          text("canBuy", "قابلیت خرید", "checkbox"),
-          text("canSell", "قابلیت فروش", "checkbox"),
-          text("description", "توضیحات"),
-        );
       }
-      if (kind !== "tags")
+      if (
+        ![
+          "funds",
+          "expenses",
+          "expenseGroups",
+          "incomes",
+          "incomeSources",
+          "goods",
+          "tags",
+        ].includes(kind)
+      ) {
         fields.push({ key: "tags", label: "برچسب‌ها", type: "tags" });
-      fields.push(text("active", "فعال", "checkbox"));
+        fields.push(text("active", "فعال", "checkbox"));
+      }
       return fields;
     }
     function edit(kind, item) {
@@ -1028,10 +988,15 @@ globalThis.SadraNext = {
       let values = {
         active: true,
         ...(kind === "goods"
-          ? { canBuy: true, canSell: true, feeMode: "none" }
+          ? {
+              catalogMode: "count",
+              catalogHasFee: "no",
+              catalogFeeMode: "fixed",
+            }
           : {}),
         ...(kind === "tags" ? { color: "#287d66" } : {}),
         ...(["units", "assets"].includes(kind) ? { decimals: "3" } : {}),
+        ...(kind === "incomes" ? { catalogNature: "currency" } : {}),
         ...clone(item || {}),
       };
       if (kind === "bankAccounts") {
@@ -1106,6 +1071,9 @@ globalThis.SadraNext = {
                 spec.type === "checkbox" ? control.checked : control.value;
               if (
                 [
+                  "catalogMode",
+                  "catalogHasFee",
+                  "catalogFeeMode",
                   "mode",
                   "nature",
                   "dimension",
@@ -1186,7 +1154,7 @@ globalThis.SadraNext = {
       save.type = "submit";
       form.append(
         grid,
-        kind === "tags" ? previewEl : el("span"),
+        el("span"),
         error,
         bar(
           save,
@@ -1211,7 +1179,7 @@ globalThis.SadraNext = {
               values.accountNumber +
               " / " +
               name("assets", values.assetId);
-          ledger.put(modelKind(kind), values);
+          saveCatalog(kind, values);
           d.close();
           render();
           message("اطلاعات ذخیره شد");
@@ -1225,22 +1193,110 @@ globalThis.SadraNext = {
       d.onclose = () => d.remove();
       d.showModal();
     }
+    function saveCatalog(kind, values) {
+      if (kind === "goods") {
+        const x = clone(values);
+        x.name = String(x.name || "").trim();
+        if (!norm(x.name)) throw Error("نام کالا الزامی است");
+        ledger.find(
+          "groups",
+          x.groupId,
+          !records("goods").some(
+            (g) => g.id === x.id && g.groupId === x.groupId,
+          ),
+        );
+        if (!["count", "weight", "weightCount"].includes(x.catalogMode))
+          throw Error("نوع کالا را انتخاب کنید");
+        if (
+          ["weight", "weightCount"].includes(x.catalogMode) &&
+          (dec(x.catalogPurity) <= 0n || dec(x.catalogPurity) > dec("1000"))
+        )
+          throw Error("عیار باید بیشتر از صفر و حداکثر ۱۰۰۰ باشد");
+        if (x.catalogMode === "weightCount" && dec(x.catalogPieceWeight) <= 0n)
+          throw Error("وزن هر قطعه باید مثبت باشد");
+        if (
+          x.catalogHasFee === "yes" &&
+          x.catalogFeeMode === "fixed" &&
+          dec(x.catalogFeeValue) < 0n
+        )
+          throw Error("کارمزد نمی‌تواند منفی باشد");
+        if (
+          records("goods").some(
+            (g) =>
+              g.id !== x.id &&
+              g.groupId === x.groupId &&
+              norm(g.name) === norm(x.name),
+          )
+        )
+          throw Error("نام کالا در همین گروه تکراری است");
+        ledger.transaction(() => {
+          ledger.s.catalogGoods ||= [];
+          const old = ledger.s.catalogGoods.find((g) => g.id === x.id);
+          const before = clone(old || null);
+          x.id ||= uid();
+          x.updated = new Date().toISOString();
+          x.catalogOnly = !ledger.s.goods.some((g) => g.id === x.id);
+          if (old) Object.assign(old, x);
+          else ledger.s.catalogGoods.push(x);
+          ledger.audit("catalog-save", "goods", x.id, before, x);
+        });
+        return;
+      }
+      if (kind === "incomes" && !values.typeId) {
+        const type = ledger.s.incomeTypes.find(
+          (t) => t.active !== false && norm(t.name) === norm(values.name),
+        );
+        values.typeId =
+          type?.id ||
+          ledger.put("incomeTypes", { name: values.name, active: true }).id;
+      }
+      ledger.put(modelKind(kind), values);
+    }
+    function catalogGood(x) {
+      return {
+        ...x,
+        catalogMode: x.standardWeight
+          ? "weightCount"
+          : x.mode === "weight"
+            ? "weight"
+            : "count",
+        catalogPurity: x.purity || "",
+        catalogPieceWeight: x.standardWeight
+          ? ledger.convert(
+              x.standardWeight,
+              x.standardWeightUnitId,
+              ledger.s.units.find(
+                (u) =>
+                  u.dimension === "weight" && dec(u.factor || "0") === dec("1"),
+              )?.id || x.standardWeightUnitId,
+            )
+          : "",
+        catalogHasFee: ["fixed", "variable"].includes(x.feeMode) ? "yes" : "no",
+        catalogFeeMode: x.feeMode === "variable" ? "variable" : "fixed",
+        catalogFeeValue:
+          x.feeMode === "fixed" ? mul(x.feeValue || "0", "10") : "",
+        ...((ledger.s.catalogGoods || []).find((g) => g.id === x.id) || {}),
+      };
+    }
     const modelKind = (kind) => (kind === "bankAccounts" ? "funds" : kind);
     const records = (kind) =>
-      kind === "bankAccounts"
-        ? ledger.s.funds.filter((f) => f.legacyKind === "banks")
-        : ledger.s[kind];
+      kind === "goods"
+        ? [
+            ...ledger.s.goods.map(catalogGood),
+            ...(ledger.s.catalogGoods || []).filter(
+              (g) => !ledger.s.goods.some((old) => old.id === g.id),
+            ),
+          ]
+        : kind === "bankAccounts"
+          ? ledger.s.funds.filter((f) => f.legacyKind === "banks")
+          : ledger.s[kind];
     function catalog() {
       const search = input(filter.q || "");
       search.placeholder = "جست‌وجو بر اساس نام یا کد";
       search.setAttribute("aria-label", "جست‌وجو");
       const filters = bar(search);
       let ids = [];
-      if (tab === "funds")
-        ids = [
-          ["locationId", "locations", "همهٔ محل‌ها"],
-          ["typeId", "fundTypes", "همهٔ انواع"],
-        ];
+      if (tab === "funds") ids = [["typeId", "fundTypes", "همهٔ انواع"]];
       if (tab === "bankAccounts")
         ids = [
           ["bankId", "bankInstitutions", "همهٔ بانک‌ها"],
@@ -1251,10 +1307,7 @@ globalThis.SadraNext = {
       if (["expenses", "expenseHeads"].includes(tab))
         ids = [["groupId", "expenseGroups", "همهٔ دسته‌ها"]];
       if (tab === "incomes")
-        ids = [
-          ["sourceId", "incomeSources", "همهٔ منابع"],
-          ["typeId", "incomeTypes", "همهٔ انواع"],
-        ];
+        ids = [["sourceId", "incomeSources", "همهٔ منابع"]];
       if (tab === "goods") ids = [["groupId", "groups", "همهٔ گروه‌ها"]];
       for (const [key, kind, label] of ids) {
         const s = select(fieldOptions(kind, true), filter[key], label);
@@ -1276,30 +1329,6 @@ globalThis.SadraNext = {
         render();
       };
       filters.append(state);
-      if (tab === "tags") {
-        const color = input(filter.color || "");
-        color.placeholder = "فیلتر کد رنگ";
-        color.onchange = () => {
-          filter.color = color.value;
-          render();
-        };
-        filters.append(color);
-        const sort = select(
-          choices({
-            name: "نام",
-            created: "زمان ایجاد",
-            updated: "آخرین ویرایش",
-            used: "تعداد استفاده",
-          }),
-          filter.sort || "name",
-          null,
-        );
-        sort.onchange = () => {
-          filter.sort = sort.value;
-          render();
-        };
-        filters.append(sort);
-      }
       host.append(
         card(
           el("h3", names[tab]),
@@ -1307,6 +1336,14 @@ globalThis.SadraNext = {
           bar(btn("ایجاد مورد جدید", () => edit(tab), "primary")),
         ),
       );
+      if (tab === "goods")
+        host.append(
+          el(
+            "p",
+            "این مرحله فقط معرفی کالاهاست. مشخصات جدید پس از اتصال بخش‌ها در اسناد و محاسبات استفاده می‌شوند؛ فرمول‌های فعلی تغییر نکرده‌اند.",
+            "n-notice",
+          ),
+        );
       if (tab === "people") {
         host.append(
           bar(
@@ -1345,7 +1382,9 @@ globalThis.SadraNext = {
           (x) =>
             (tab !== "funds" || x.legacyKind !== "banks") &&
             (!filter.q ||
-              norm(x.name + " " + (x.code || "")).includes(norm(filter.q))) &&
+              norm(
+                x.name + " " + (x.code || "") + " " + (x.accountNumber || ""),
+              ).includes(norm(filter.q))) &&
             (!filter.color || norm(x.color) === norm(filter.color)) &&
             (filter.state === "yes"
               ? x.active !== false
@@ -1390,15 +1429,11 @@ globalThis.SadraNext = {
                   ).length,
                 )
               : tab === "funds"
-                ? name("locations", x.locationId) +
-                  " · " +
-                  name("fundTypes", x.typeId)
+                ? name("fundTypes", x.typeId)
                 : tab === "people"
                   ? name("peopleGroups", x.groupId)
                   : tab === "expenses"
-                    ? name("expenseGroups", x.groupId) +
-                      " / " +
-                      name("expenseHeads", x.headId)
+                    ? name("expenseGroups", x.groupId)
                     : tab === "expenseHeads"
                       ? name("expenseGroups", x.groupId) +
                         (x.parentId
@@ -1407,15 +1442,32 @@ globalThis.SadraNext = {
                       : tab === "incomes"
                         ? name("incomeSources", x.sourceId) +
                           " · " +
-                          name("incomeTypes", x.typeId)
+                          (x.catalogNature === "commodity"
+                            ? "کالایی"
+                            : x.catalogNature === "currency"
+                              ? "ارزی"
+                              : "ماهیت تعیین نشده")
                         : tab === "goods"
-                          ? modes[x.mode] +
+                          ? name("groups", x.groupId) +
                             " · " +
-                            name("units", x.unitId) +
-                            " · " +
-                            (x.purity ? "عیار " + f(x.purity) : "") +
-                            " · " +
-                            fees[x.feeMode || "none"]
+                            ({
+                              count: "تعدادی",
+                              weight: "وزنی",
+                              weightCount: "وزنی–تعدادی",
+                            }[x.catalogMode] || "") +
+                            (x.catalogPurity
+                              ? " · عیار " + f(x.catalogPurity)
+                              : "") +
+                            (x.catalogMode === "weightCount"
+                              ? " · هر قطعه " + f(x.catalogPieceWeight) + " گرم"
+                              : "") +
+                            (x.catalogHasFee === "yes"
+                              ? x.catalogFeeMode === "fixed"
+                                ? " · کارمزد ثابت " +
+                                  f(x.catalogFeeValue) +
+                                  " ریال"
+                                : " · کارمزد متغیر هر قطعه در سند"
+                              : "")
                           : tab === "units"
                             ? dims[x.dimension] +
                               " · ضریب: " +
@@ -1427,28 +1479,67 @@ globalThis.SadraNext = {
                                 " · " +
                                 name("units", x.unitId)
                               : x.description || "";
+        const simpleCatalog = [
+          "funds",
+          "expenses",
+          "expenseGroups",
+          "incomes",
+          "incomeSources",
+          "goods",
+          "tags",
+        ].includes(tab);
         result.replaceChildren(
           table(
-            [
-              "نام",
-              "مشخصات / دسته‌بندی",
-              "وضعیت",
-              tab === "tags" ? "تعداد موارد مرتبط" : "برچسب‌ها",
-            ],
+            tab === "tags"
+              ? ["نام", "وضعیت"]
+              : [
+                  "نام",
+                  "مشخصات / دسته‌بندی",
+                  "وضعیت",
+                  ...(!simpleCatalog ? ["برچسب‌ها"] : []),
+                ],
             list.map((x) => ({
               item: x,
-              cells: [
-                tab === "tags" ? chip(x.id) : x.name,
-                descriptions(x),
-                x.active === false ? "غیرفعال" : "فعال",
-                tab === "tags" ? f(usage(x.id)) : tags(x.tags),
-              ],
+              cells:
+                tab === "tags"
+                  ? [x.name, x.active === false ? "غیرفعال" : "فعال"]
+                  : [
+                      x.name,
+                      descriptions(x),
+                      x.active === false ? "غیرفعال" : "فعال",
+                      ...(!simpleCatalog ? [tags(x.tags)] : []),
+                    ],
             })),
             (x) =>
               bar(
                 btn("ویرایش", () => edit(tab, x)),
                 btn(x.active === false ? "فعال‌سازی" : "غیرفعال‌سازی", () => {
-                  ledger.put(modelKind(tab), {
+                  if (
+                    tab === "goods" &&
+                    ledger.s.goods.some((g) => g.id === x.id)
+                  ) {
+                    ledger.put("goods", {
+                      ...ledger.find("goods", x.id),
+                      active: x.active === false,
+                    });
+                    const draft = (ledger.s.catalogGoods || []).find(
+                      (g) => g.id === x.id,
+                    );
+                    if (draft)
+                      ledger.transaction(() => {
+                        draft.active = x.active === false;
+                        ledger.audit(
+                          "catalog-status",
+                          "goods",
+                          x.id,
+                          x.active,
+                          draft.active,
+                        );
+                      });
+                    render();
+                    return;
+                  }
+                  saveCatalog(tab, {
                     ...x,
                     active: x.active === false,
                   });
@@ -1460,7 +1551,26 @@ globalThis.SadraNext = {
                       "حذف",
                       () => {
                         if (confirm("«" + x.name + "» حذف شود؟")) {
-                          ledger.remove(modelKind(tab), x.id);
+                          if (
+                            tab === "goods" &&
+                            (ledger.s.catalogGoods || []).some(
+                              (g) => g.id === x.id,
+                            )
+                          ) {
+                            ledger.transaction(() => {
+                              if (ledger.used("goods", x.id))
+                                throw Error("دارای سند یا ارتباط است");
+                              if (ledger.s.goods.some((g) => g.id === x.id))
+                                ledger.s.goods = ledger.s.goods.filter(
+                                  (g) => g.id !== x.id,
+                                );
+                              ledger.s.catalogGoods =
+                                ledger.s.catalogGoods.filter(
+                                  (g) => g.id !== x.id,
+                                );
+                              ledger.audit("delete", "goods", x.id, x, null);
+                            });
+                          } else ledger.remove(modelKind(tab), x.id);
                           render();
                         }
                       },
@@ -3405,7 +3515,7 @@ globalThis.SadraNext = {
     );
     document.querySelectorAll("aside small").forEach((e) => {
       if (e.textContent.includes("۲۰۳"))
-        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۴";
+        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۵";
     });
     const menu =
       document.getElementById("groupsMenu200") ||
@@ -3453,9 +3563,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۴";
+    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۵";
     window.addEventListener("load", () => {
-      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۴";
+      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۵";
     });
     const api = {
       go,
