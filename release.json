@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 206,
+  "update": 207,
   "date": "2026-10-16",
   "type": "browser",
-  "label": "درآمد با نام، طلب درآمدی، تنظیمات کارمزد و حذف منوی معرفی‌ها",
+  "label": "حذف منوی معرفی‌ها از ابتدای بارگذاری صفحه",
   "entry": "index.html",
   "assets": [
     "next-core.js",

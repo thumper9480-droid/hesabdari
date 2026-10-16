@@ -563,7 +563,7 @@ globalThis.SadraNext = {
         bar(
           el(
             "span",
-            "نسخهٔ آزمایشی ۲۰۶ · اطلاعات در همین مرورگر ذخیره می‌شوند",
+            "نسخهٔ آزمایشی ۲۰۷ · اطلاعات در همین مرورگر ذخیره می‌شوند",
             "n-muted",
           ),
           btn("دانلود پشتیبان", backup),
@@ -3527,7 +3527,7 @@ globalThis.SadraNext = {
     );
     document.querySelectorAll("aside small").forEach((e) => {
       if (e.textContent.includes("۲۰۳"))
-        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۶";
+        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۷";
     });
     const menu =
       document.getElementById("groupsMenu200") ||
@@ -3576,9 +3576,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۶";
+    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۷";
     window.addEventListener("load", () => {
-      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۶";
+      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۷";
     });
     const api = {
       go,
