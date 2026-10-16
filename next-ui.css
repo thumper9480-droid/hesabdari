@@ -410,3 +410,7 @@ aside > button[data-page="installments"], aside > button[data-page="backup"] { d
 #next204 .invoice216-party { grid-column: 1 / -1; }
 #next204 .invoice216-editor textarea { min-height: 70px; width: 100%; resize: vertical; }
 #next204 .invoice216-lines > .primary { margin-block: 10px; }
+
+/* Update 217: invoice-only print surface. */
+#invoice217-print{display:none}
+@media print{body.invoice217-printing>*{display:none!important}body.invoice217-printing>#invoice217-print{display:block!important;direction:rtl;color:#000;background:#fff;padding:12px;font-family:inherit}#invoice217-print table{width:100%;border-collapse:collapse}#invoice217-print td,#invoice217-print th{border:1px solid #aaa;padding:6px;text-align:right}#invoice217-print .n-scroll{overflow:visible}}

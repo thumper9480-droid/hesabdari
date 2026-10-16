@@ -130,7 +130,7 @@
     }
     used(kind, id) {
       if ((this.s.installmentContracts214 || []).some(c => c.partyId === id || c.bankId === id || c.groupId === id || c.goodsGroup === id || c.good === id || c.tags?.includes(id)) ||
-          (this.s.invoiceHeaders214 || []).some(d => d.partyId === id || d.bankId === id || d.groupId === id || d.rows?.some(r=>r.assetId===id || r.partyId===id || r.bankId===id || r.groupId===id || r.contractId===id || r.tags?.includes(id)))) return true;
+          (this.s.invoiceHeaders214 || []).some(d => d.partyId === id || d.bankId === id || d.groupId === id || d.rows?.some(r=>r.good===id || r.goodsGroup===id || r.assetId===id || r.partyId===id || r.bankId===id || r.groupId===id || r.contractId===id || r.tags?.includes(id)))) return true;
       const legacy = this.s.legacy?.references || this.s.legacy?.raw?.db || {};
       if (
         (legacy.installmentContracts || []).some(
@@ -180,7 +180,7 @@
       )
         return true;
       const refs = {
-        units: ["unitId", "rateUnitId", "standardWeightUnitId"],
+        units: ["unitId", "rateUnitId", "standardWeightUnitId", "catalogUnitId", "catalogRateUnitId", "catalogPieceUnitId"],
         assets: ["assetId"],
         assetTypes: ["assetTypeId"],
         goods: ["good", "feeGoodId", "moneyGood", "quoteGood", "toGood"],
@@ -213,12 +213,13 @@
         )
           throw Error("فهرست نامعتبر");
         const old = data.id ? this.s[kind].find((x) => x.id === data.id) : null;
-        if (data.id && !old) throw Error("رکورد یافت نشد");
+        const catalogId=kind==="goods" && !old && (this.s.catalogGoods || []).some(g=>g.id===data.id);
+        if (data.id && !old && !catalogId) throw Error("رکورد یافت نشد");
         const before = clone(old || null),
           x = {
             ...old,
             ...clone(data),
-            id: old?.id || uid(),
+            id: old?.id || (catalogId?data.id:uid()),
             active: data.active ?? old?.active ?? true,
             created: old?.created || new Date().toISOString(),
             updated: new Date().toISOString(),
@@ -306,7 +307,7 @@
         if (kind === "units") {
           if (!["weight", "count", "currency"].includes(x.dimension))
             throw Error("نوع واحد نامعتبر");
-          x.decimals = Number(x.decimals);
+          x.decimals = Number(norm(x.decimals).replace(/[,٬]/g,""));
           if (!Number.isInteger(x.decimals) || x.decimals < 0 || x.decimals > 8)
             throw Error("دقت واحد باید از صفر تا ۸ باشد");
           x.factor = x.factor ? pos(x.factor) : null;
@@ -335,7 +336,7 @@
             throw Error("ماهیت دارایی نامعتبر");
           if ((x.nature === "currency") !== (u.dimension === "currency"))
             throw Error("واحد با ماهیت دارایی سازگار نیست");
-          x.decimals = Number(x.decimals ?? u.decimals);
+          x.decimals = Number(norm(x.decimals ?? u.decimals).replace(/[,٬]/g,""));
           if (
             !Number.isInteger(x.decimals) ||
             x.decimals < 0 ||
@@ -685,6 +686,9 @@
     assertFund(id, g) {
       const f = this.find("funds", id, true),
         a = this.find("assets", g.assetId);
+      if(f.legacyKind==="banks" && a.nature!=="currency")throw Error("بانک فقط برای ارز است؛ دریافت، پرداخت، خرید و فروش کالا در بانک مجاز نیست");
+      if(f.nature==="currency" && a.nature!=="currency")throw Error("صندوق ارزی نمی‌تواند کالا دریافت یا پرداخت کند");
+      if(f.nature==="commodity" && a.nature!=="commodity")throw Error("صندوق کالایی نمی‌تواند ارز دریافت یا پرداخت کند");
       if (f.nature !== a.nature || (f.assetId && f.assetId !== a.id))
         throw Error("دارایی با صندوق یا حساب انتخاب‌شده سازگار نیست");
       return f;
@@ -965,7 +969,7 @@
     }
     movement(input) {
       return this.transaction(() => {
-        const g = this.find("goods", input.good, true),
+        const originalGood = this.find("goods", input.good, true),g=input.catalogInvoice217?{...originalGood,feeMode:"none"}:originalGood,
           q = this.quantity(g, input);
         const allowed = [
           "transfer",
@@ -989,7 +993,7 @@
         const entries = [],
           inStock = physical.includes(input.toKind),
           outStock = physical.includes(input.fromKind),
-          lot = this.resolveLot({ ...input, fund: input.from }, g, outStock),
+          lot = input.catalogInvoice217 && outStock ? {id:"",purity:g.purity || "",mark:"",assay:""} : this.resolveLot({ ...input, fund: input.from }, g, outStock),
           info = {
             lot: lot.id,
             purity: lot.purity,
@@ -1004,13 +1008,18 @@
           if (physical.includes(kind)) {
             this.assertFund(id, g);
             if (sign < 0n) this.checkStock(id, g, q.quantity, lot.id);
-            entries.push({
-              bucket: "stock",
-              account: id,
-              good: g.id,
-              quantity: str(dec(q.quantity) * sign),
-              count: q.count ? str(dec(q.count) * sign) : null,
-              ...info,
+            if(input.catalogInvoice217 && sign<0n && g.mode==="weight") {
+              let left=dec(q.quantity);
+              for(const lot of this.lots(id,g.id)) {
+                if(left<=0n)break;
+                if(g.purity && lot.purity && dec(g.purity)!==dec(lot.purity))continue;
+                const take=dec(lot.quantity)<left?dec(lot.quantity):left;left-=take;
+                entries.push({bucket:"stock",account:id,good:g.id,quantity:str(-take),count:q.count?sub("0",div(mul(str(take),q.count),q.quantity)):null,lot:lot.id,purity:lot.purity || g.purity || "",mark:lot.mark || "",assay:lot.assay || ""});
+              }
+              if(left>0n)throw Error("موجودی کالا با عیار انتخاب‌شده کافی نیست");
+            } else entries.push({
+              bucket: "stock", account: id, good: g.id,
+              quantity: str(dec(q.quantity) * sign),count: q.count ? str(dec(q.count) * sign) : null,...info,
             });
           } else {
             if (!["people", "expenses", "incomes"].includes(kind))
@@ -1118,8 +1127,8 @@
     saveInvoiceHeader214(input) {
       return this.transaction(() => {
         const current = this.find("invoiceHeaders214", input.id);
-        if (current.status !== "draft") throw Error("این سربرگ قابل ویرایش نیست");
-        if(current.rows?.length && ["partyKind","partyId","bankId","groupId"].some(key=>(input[key] || "")!==(current[key] || "")))throw Error("برای تغییر طرف حساب، ابتدا سطرهای پیش‌نویس را حذف کنید");
+        if (!["draft","editing"].includes(current.status)) throw Error("این سربرگ قابل ویرایش نیست");
+        if(current.status!=="editing" && current.rows?.length && ["partyKind","partyId","bankId","groupId"].some(key=>(input[key] || "")!==(current[key] || "")))throw Error("برای تغییر طرف حساب، ابتدا سطرهای پیش‌نویس را حذف کنید");
         if (input.partyId) this.validateParty214(input);
         const before = clone(current);
         Object.assign(current, {jalali:String(input.jalali || ""),partyKind:input.partyKind || "",partyId:input.partyId || "",bankId:input.bankId || "",groupId:input.groupId || "",updated:new Date().toISOString()});
@@ -1127,9 +1136,76 @@
         return clone(current);
       });
     }
+    catalogGood217(id) {
+      const draft=(this.s.catalogGoods || []).find(g=>g.id===id),old=this.s.goods.find(g=>g.id===id);
+      if(!draft)return this.find("goods",id,true);
+      if(draft.active===false)throw Error("کالا غیرفعال است");
+      const mode=draft.catalogMode==="count"?"count":"weight";
+      const u=this.find("units",draft.catalogUnitId || old?.unitId || this.s.units.find(u=>u.active!==false && u.dimension===mode && (mode==="count"?u.decimals===0:dec(u.factor || "0")===SCALE))?.id,true);
+      const rate=this.find("units",draft.catalogRateUnitId || old?.rateUnitId || u.id,true);
+      if(u.dimension!==mode || rate.dimension!==mode || (mode!=="weight" && u.id!==rate.id))throw Error("واحد مقدار و نرخ با نوع کالا سازگار نیست");
+      let asset=old?this.find("assets",old.assetId):this.s.assets.find(a=>a.nature==="commodity" && a.unitId===u.id && norm(a.name)===norm(draft.name));
+      if(!asset)asset=this.put("assets",{name:draft.name,nature:"commodity",unitId:u.id,decimals:u.decimals,active:true});
+      const pieceUnit=draft.catalogPieceUnitId || old?.standardWeightUnitId || this.s.units.find(u=>u.dimension==="weight" && dec(u.factor || "0")===SCALE)?.id;
+      const g={...old,id:draft.id,name:draft.name,active:true,mode,assetId:asset.id,unitId:u.id,rateUnitId:rate.id,groupId:draft.groupId,feeMode:"none",
+        purity:mode==="weight"?draft.catalogPurity || "":"",metal:mode==="weight" && draft.catalogPurity?(old?.metal || "عیاردار"):"",
+        standardWeight:draft.catalogMode==="weightCount"?pos(draft.catalogPieceWeight):"",standardWeightUnitId:pieceUnit,allowActual:false};
+      if(old && this.used("goods",id) && ["mode","unitId","purity","standardWeight","standardWeightUnitId"].some(k=>(g[k] || "")!==(old[k] || "")))throw Error("واحد، عیار و وزن ثابت کالای دارای سابقه قابل تغییر نیست؛ کالای تازه معرفی کنید");
+      return this.put("goods",g);
+    }
+    commodityValues217(line) {
+      const g=this.catalogGood217(line.good),draft=(this.s.catalogGoods || []).find(x=>x.id===g.id) || {catalogMode:g.standardWeight?"weightCount":g.mode,catalogHasFee:g.feeMode && g.feeMode!=="none"?"yes":"no",catalogFeeMode:g.feeMode==="variable"?"variable":"fixed",catalogFeeBasis:g.feeMode==="gold"?"weightPercent":"perPiece",catalogFeeValue:g.feeMode==="gold"?g.feePercent:mul(g.feeValue || "0","10")};
+      if(g.mode==="currency")throw Error("کالای غیرارزی انتخاب کنید");
+      if(line.goodsGroup==="__ungrouped"?!!g.groupId:(!line.goodsGroup || ![g.groupId,g.subgroupId].includes(line.goodsGroup)))throw Error("کالا متعلق به گروه انتخابی نیست");
+      const mode=draft?.catalogMode || (g.standardWeight?"weightCount":g.mode);
+      const unitId=line.unitId || g.unitId,u=this.find("units",unitId,true);
+      if(u.dimension!==g.mode || (g.mode!=="weight" && unitId!==g.unitId))throw Error("واحد مقدار با کالا سازگار نیست");
+      const count=mode==="count"?pos(line.amount):line.count?pos(line.count):null;
+      if(count && dec(count)%SCALE!==0n)throw Error("تعداد باید صحیح باشد");
+      let quantity=mode==="weightCount"?this.convert(mul(pos(count),g.standardWeight),g.standardWeightUnitId,g.unitId):this.convert(pos(line.amount),unitId,g.unitId);
+      quantity=this.precision(quantity,g.unitId);
+      let fee=null;
+      if(draft?.catalogHasFee==="yes") {
+        const value=draft.catalogFeeMode==="fixed"?draft.catalogFeeValue:line.feeValue;
+        if(value===undefined || value==="" || dec(value)<0n)throw Error("کارمزد معتبر وارد کنید");
+        if(draft.catalogFeeBasis==="weightPercent") {
+          if(g.mode!=="weight" || dec(value)>dec("100"))throw Error("کارمزد درصدی از وزن فقط برای کالای وزنی و حداکثر ۱۰۰ درصد است");
+          fee={basis:"weightPercent",value:str(dec(value)),quantity:this.round(div(mul(quantity,value),"100"),g.unitId),good:g.id};
+        } else {
+          if(!count)throw Error("برای کارمزد هر عدد، تعداد قطعات را مشخص کنید");
+          const asset=this.s.assets.find(a=>a.active!==false && a.nature==="currency" && this.find("units",a.unitId).currencyCode==="IRR");
+          if(!asset)throw Error("برای کارمزد مبلغی، ابتدا ارز ریال با کد IRR معرفی کنید");
+          const money=this.currencyGood216(asset.id);
+          fee={basis:"perPiece",value:str(dec(value)),quantity:this.precision(mul(count,value),money.unitId),good:money.id};
+        }
+      }
+      return {good:g,quantity,count,unitId,displayAmount:this.convert(quantity,g.unitId,unitId),fee};
+    }
+    beginInvoiceEdit217(headerId) {
+      return this.transaction(()=>{
+        const h=this.find("invoiceHeaders214",headerId);
+        if(h.status!=="posted")return clone(h);
+        if(h.documentIds.some(id=>this.s.documents.some(d=>d.reversalOf===id)))throw Error("بخشی از این فاکتور قبلاً برگشت داده شده است");
+        h.originalDocumentIds=clone(h.documentIds);h.status="editing";
+        this.audit("invoice-edit-start","invoiceHeaders214",h.id,null,{number:h.number});return clone(h);
+      });
+    }
+    reverseInvoiceDocuments217(h,reason) {
+      for(const id of [...(h.originalDocumentIds || h.documentIds || [])].reverse()) {
+        if(!this.s.documents.some(d=>d.reversalOf===id))this.reverse(id,reason,uid(),this.find("documents",id).date);
+      }
+    }
+    deleteInvoice217(headerId) {
+      return this.transaction(()=>{
+        const h=this.find("invoiceHeaders214",headerId);if(h.status==="deleted")throw Error("فاکتور قبلاً حذف شده است");
+        this.reverseInvoiceDocuments217(h,"حذف فاکتور "+h.number);
+        h.status="deleted";h.deletedAt=new Date().toISOString();delete h.originalDocumentIds;
+        this.audit("invoice-delete","invoiceHeaders214",h.id,null,{number:h.number});return clone(h);
+      });
+    }
     currencyGood216(assetId) {
       const asset=this.find("assets",assetId,true),unit=this.find("units",asset.unitId,true);
-      if(asset.nature!=="currency" || unit.dimension!=="currency")throw Error("ارز معتبر از معرفی دارایی‌ها انتخاب کنید");
+      if(asset.nature!=="currency" || unit.dimension!=="currency")throw Error("ارز معتبر از معرفی ارزها انتخاب کنید");
       let good=this.s.goods.find(g=>g.active!==false && g.mode==="currency" && g.assetId===assetId && g.unitId===asset.unitId);
       if(!good)good=this.put("goods",{name:asset.name,assetId:asset.id,unitId:unit.id,rateUnitId:unit.id,mode:"currency",feeMode:"none",active:true});
       return good;
@@ -1144,9 +1220,10 @@
     validateInstallmentLine216(header,row,assetId,amount) {
       if(!["banks","funds"].includes(header.partyKind))throw Error("برای تسویهٔ قسط، بانک یا صندوق واقعی را در سربرگ انتخاب کنید");
       const c=this.find("installmentContracts214",row.contractId),g=this.find("goods",c.good,true);
-      if(g.mode!=="currency" || g.assetId!==assetId)throw Error("ارز سطر باید همان ارز قرارداد باشد");
+      if(g.assetId!==assetId || (row.receiptKind==="commodity" && row.good!==g.id))throw Error("دارایی سطر باید همان دارایی قرارداد باشد");
       if(c.direction!==(row.operation==="receive"?"receivable":"payable"))throw Error("دریافت فقط برای اقساط طلبکار شدم و پرداخت فقط برای اقساط بدهکار شدم است");
-      const remaining=this.installmentRemaining216(c.id,row.dueId);
+      let remaining=this.installmentRemaining216(c.id,row.dueId);
+      if(header.status==="editing")for(const payment of this.s.installmentSettlements216 || [])if(payment.contractId===c.id && payment.dueId===row.dueId && header.originalDocumentIds?.includes(payment.documentId) && !this.s.documents.some(d=>d.reversalOf===payment.documentId))remaining=add(remaining,payment.amount);
       if(dec(amount)>dec(remaining))throw Error("مبلغ از ماندهٔ این قسط بیشتر است");
       this.assertFund(header.partyId,g);
       return c;
@@ -1155,12 +1232,20 @@
       const c=this.validateInstallmentLine216(header,row,row.assetId,row.amount),receiving=row.operation==="receive";
       if(date<c.created.slice(0,10))throw Error("تاریخ تسویه نمی‌تواند پیش از ایجاد قرارداد باشد");
       if(!receiving)this.checkStock(header.partyId,good,row.amount);
-      const entries=[{bucket:"stock",account:header.partyId,good:good.id,quantity:receiving?row.amount:sub("0",row.amount)}];
+      const entries=[{bucket:"stock",account:header.partyId,good:good.id,quantity:receiving?row.amount:sub("0",row.amount),count:row.count?(receiving?row.count:sub("0",row.count)):null,purity:good.purity || "",lot:good.mode==="weight"?uid():""}];
+      if(!receiving && good.mode==="weight") {
+        entries.length=0;let left=dec(row.amount);
+        for(const lot of this.lots(header.partyId,good.id)) {
+          if(left<=0n)break;const take=dec(lot.quantity)<left?dec(lot.quantity):left;left-=take;
+          entries.push({bucket:"stock",account:header.partyId,good:good.id,quantity:str(-take),count:row.count?sub("0",div(mul(str(take),row.count),row.amount)):null,lot:lot.id,purity:lot.purity || good.purity || ""});
+        }
+        if(left>0n)throw Error("موجودی کافی نیست");
+      }
       if(c.affectAccount) {
         const original=this.find("documents",c.accountDocumentId).entries[0];
-        entries.push({bucket:original.bucket,account:original.account,good:good.id,quantity:receiving?sub("0",row.amount):row.amount,accountSnapshot:clone(original.accountSnapshot)});
+        entries.push({bucket:original.bucket,account:original.account,good:good.id,quantity:receiving?sub("0",row.amount):row.amount,purity:good.purity || "",accountSnapshot:clone(original.accountSnapshot)});
       }
-      const doc=this.append({token:header.id+":"+row.id,type:receiving?"installmentReceive":"installmentPay",date,tags:[],lineTags:row.tags,notes:row.notes},entries,
+      const doc=this.append({token:header.id+":"+(header.postingToken || "")+":"+row.id,type:receiving?"installmentReceive":"installmentPay",date,tags:[],lineTags:row.tags,notes:row.notes},entries,
         {related:c.accountDocumentId || undefined,contract:c.id,due:row.dueId,person:c.partyKind==="people"?c.partyId:"",good:good.id,quantity:row.amount,physical:true});
       this.s.installmentSettlements216 ||= [];
       const settlement={id:uid(),contractId:c.id,dueId:row.dueId,amount:row.amount,documentId:doc.id,date};
@@ -1168,10 +1253,11 @@
       return doc;
     }
     validateInvoiceLine216(header,line) {
-      if(!["receive","pay"].includes(line.operation) || line.receiptKind!=="currency")throw Error("این مرحله فقط دریافت و پرداخت ارزی را پشتیبانی می‌کند");
-      const asset=this.find("assets",line.assetId,true),unit=this.find("units",asset.unitId,true);
-      if(asset.nature!=="currency" || unit.dimension!=="currency")throw Error("نوع ارز را انتخاب کنید");
-      const amount=this.precision(pos(line.amount),asset.unitId);
+      if(!["receive","pay"].includes(line.operation) || !["currency","commodity"].includes(line.receiptKind))throw Error("نوع دریافت یا پرداخت را مشخص کنید");
+      const commodity=line.receiptKind==="commodity"?this.commodityValues217(line):null;
+      const asset=this.find("assets",commodity?commodity.good.assetId:line.assetId,true),unit=this.find("units",asset.unitId,true);
+      if(!commodity && (asset.nature!=="currency" || unit.dimension!=="currency"))throw Error("نوع ارز را انتخاب کنید");
+      const amount=commodity?commodity.quantity:this.precision(pos(line.amount),asset.unitId);
       if(line.partyKind==="installments") {
         this.validateInstallmentLine216(header,line,asset.id,amount);
       } else {
@@ -1180,20 +1266,22 @@
         for(const party of [header,line])if(["banks","funds"].includes(party.partyKind))this.assertFund(party.partyId,{assetId:asset.id});
       }
       const tags=[...new Set(line.tags || [])];tags.forEach(id=>this.find("tags",id,true));
-      return {asset,amount,tags};
+      return {asset,amount,tags,commodity};
     }
     saveInvoiceLine216(headerId,input) {
       return this.transaction(()=>{
         const header=this.find("invoiceHeaders214",headerId);
-        if(header.status!=="draft")throw Error("سند ثبت‌شده قابل تغییر مستقیم نیست");
+        if(!["draft","editing"].includes(header.status))throw Error("سند ثبت‌شده قابل تغییر مستقیم نیست");
         this.validateParty214(header);
         const values=this.validateInvoiceLine216(header,input);
         header.rows ||= [];
         const old=input.id?header.rows.find(r=>r.id===input.id):null;
         if(input.id && !old)throw Error("سطر موردنظر یافت نشد");
-        const row={id:old?.id || uid(),operation:input.operation,receiptKind:"currency",assetId:input.assetId,assetName:values.asset.name,
+        const row={id:old?.id || uid(),operation:input.operation,receiptKind:input.receiptKind,assetId:values.asset.id,assetName:values.commodity?.good.name || values.asset.name,
+          good:values.commodity?.good.id || "",goodsGroup:input.goodsGroup || "",unitId:values.commodity?.unitId || values.asset.unitId,
+          count:values.commodity?.count || "",feeValue:input.feeValue || "",displayAmount:values.commodity?.displayAmount || values.amount,
           partyKind:input.partyKind,partyId:input.partyId,bankId:input.bankId || "",groupId:input.groupId || "",contractId:input.contractId || "",dueId:input.dueId || "",
-          amount:values.amount,tags:values.tags,notes:String(input.notes || ""),updated:new Date().toISOString()};
+          amount:values.commodity?.displayAmount || values.amount,tags:values.tags,notes:String(input.notes || ""),updated:new Date().toISOString()};
         const before=clone(old || null);if(old)Object.assign(old,row);else header.rows.push(row);
         this.audit("invoice-row-save","invoiceHeaders214",header.id,before,row);
         return clone(header);
@@ -1202,7 +1290,7 @@
     removeInvoiceLine216(headerId,rowId) {
       return this.transaction(()=>{
         const header=this.find("invoiceHeaders214",headerId);
-        if(header.status!=="draft")throw Error("سند ثبت‌شده قابل تغییر مستقیم نیست");
+        if(!["draft","editing"].includes(header.status))throw Error("سند ثبت‌شده قابل تغییر مستقیم نیست");
         const row=header.rows?.find(r=>r.id===rowId);if(!row)throw Error("سطر یافت نشد");
         header.rows=header.rows.filter(r=>r.id!==rowId);this.audit("invoice-row-remove","invoiceHeaders214",header.id,row,null);
         return clone(header);
@@ -1211,28 +1299,39 @@
     postInvoice216(headerId,date) {
       return this.transaction(()=>{
         const header=this.find("invoiceHeaders214",headerId);
-        if(header.status!=="draft")throw Error("این سند قبلاً ثبت شده است");
+        if(!["draft","editing"].includes(header.status))throw Error("این سند قبلاً ثبت شده است");
         if(!header.rows?.length)throw Error("ابتدا حداقل یک سطر ثبت کنید");
         this.validateParty214(header);this.metadata({date});
         const parts=new Intl.DateTimeFormat("en-US-u-ca-persian",{timeZone:"UTC",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date(date+"T12:00:00Z"));
         const jalali=["year","month","day"].map(k=>parts.find(p=>p.type===k).value).join("/");
         const entered=norm(header.jalali).split(/[/-]/).map((v,i)=>i?String(Number(v)).padStart(2,"0"):String(Number(v))).join("/");
         if(jalali!==entered)throw Error("تاریخ شمسی سربرگ معتبر نیست");
+        if(header.status==="editing")this.reverseInvoiceDocuments217(header,"اصلاح فاکتور "+header.number);
+        header.postingToken=uid();
         const ids=[];
         for(const row of header.rows) {
-          this.validateInvoiceLine216(header,row);
-          const good=row.partyKind==="installments"?this.find("goods",this.find("installmentContracts214",row.contractId).good,true):this.currencyGood216(row.assetId);
+          const values=this.validateInvoiceLine216(header,row),c=values.commodity;
+          const good=row.partyKind==="installments"?this.find("goods",this.find("installmentContracts214",row.contractId).good,true):c?c.good:this.currencyGood216(row.assetId);
           let doc;
-          if(row.partyKind==="installments") doc=this.postInstallmentLine216(header,row,good,date);
+          if(row.partyKind==="installments") doc=this.postInstallmentLine216(header,{...row,amount:values.amount},good,date);
           else {
             const source=row.operation==="receive"?header:row,target=row.operation==="receive"?row:header;
-            doc=this.movement({type:row.operation,token:header.id+":"+row.id,date,good:good.id,quantity:row.amount,
-              fromKind:source.partyKind,from:source.partyId,toKind:target.partyKind,to:target.partyId,lineTags:row.tags,tags:[],notes:row.notes});
+            doc=this.movement({type:row.operation,token:header.id+":"+(header.postingToken || "")+":"+row.id,date,good:good.id,quantity:values.amount,count:c?.count || undefined,
+              fromKind:source.partyKind,from:source.partyId,toKind:target.partyKind,to:target.partyId,lineTags:row.tags,tags:[],notes:row.notes,catalogInvoice217:!!c});
           }
           const saved=this.find("documents",doc.id);saved.invoiceHeader=header.id;saved.invoiceNumber=header.number;saved.invoiceRow=row.id;
+          if(c?.fee && dec(c.fee.quantity)>0n) {
+            const party=row.partyKind==="installments"?this.find("installmentContracts214",row.contractId):["banks","funds"].includes(header.partyKind) && !["banks","funds"].includes(row.partyKind)?row:header;
+            const kind=party.partyKind,bucket={people:"person",expenses:"expense",incomes:"income",banks:"commitment",funds:"commitment"}[kind];
+            const baseEntry=saved.entries.find(e=>e.account===party.partyId && e.component!=="fee"),sign=baseEntry?(dec(baseEntry.quantity)<0n?-1n:1n):(row.operation==="receive"?-1n:1n);
+            const entry={bucket,account:party.partyId,good:c.fee.good,quantity:str(dec(c.fee.quantity)*sign),component:"fee",purity:c.fee.basis==="weightPercent"?good.purity || "":"",lineTags:clone(row.tags),accountSnapshot:clone(this.find(["banks","funds"].includes(kind)?"funds":kind,party.partyId))};
+            saved.entries.push(entry);const fg=this.find("goods",c.fee.good);saved.snapshots[fg.id]={...clone(fg),unit:clone(this.find("units",fg.unitId)),asset:clone(this.find("assets",fg.assetId))};
+            saved.fees=[clone(c.fee)];
+          }
+          if(c){saved.quantity=values.amount;saved.count=c.count;saved.displayUnitId=c.unitId;saved.displayAmount=c.displayAmount;}
           row.documentId=doc.id;ids.push(doc.id);
         }
-        header.status="posted";header.documentIds=ids;header.postedAt=new Date().toISOString();
+        header.status="posted";delete header.originalDocumentIds;header.documentIds=ids;header.postedAt=new Date().toISOString();
         this.audit("invoice-post","invoiceHeaders214",header.id,null,{number:header.number,documents:ids});
         return clone(header);
       });
@@ -1243,21 +1342,7 @@
         const party = this.validateParty214(input);
         if (!["payable", "receivable"].includes(input.direction)) throw Error("نوع اقساط را انتخاب کنید");
         if (typeof input.affectAccount !== "boolean") throw Error("اثر قرارداد در ریزحساب را مشخص کنید");
-        if (!this.s.goods.some(g=>g.id===input.good)) {
-          const draft=(this.s.catalogGoods || []).find(g=>g.id===input.good && g.active!==false);
-          if(!draft)throw Error("کالای معتبر انتخاب کنید");
-          this.find("groups",draft.groupId,true);
-          const mode=draft.catalogMode === "count" ? "count" : "weight";
-          if(!["count","weight","weightCount"].includes(draft.catalogMode))throw Error("نوع کالا معتبر نیست");
-          const unit=this.s.units.find(u=>u.active!==false && u.dimension===mode && (mode==="count" ? u.decimals===0 : dec(u.factor || "0")===SCALE));
-          if(!unit)throw Error("ابتدا واحد پایهٔ گرم یا عدد را معرفی کنید");
-          const asset={id:uid(),name:draft.name,nature:"commodity",unitId:unit.id,decimals:unit.decimals,active:true};
-          const g={id:draft.id,name:draft.name,assetId:asset.id,unitId:unit.id,rateUnitId:unit.id,mode,groupId:draft.groupId,active:true,canBuy:true,canSell:true,feeMode:"none",
-            purity:mode==="weight"?pos(draft.catalogPurity):"",metal:mode==="weight"?"عیاردار":"",standardWeight:draft.catalogMode==="weightCount"?pos(draft.catalogPieceWeight):"",standardWeightUnitId:unit.id};
-          this.s.assets.push(asset);this.s.goods.push(g);
-          this.audit("activate-for-installments","assets",asset.id,null,asset);
-          this.audit("activate-for-installments","goods",g.id,null,g);
-        }
+        if((this.s.catalogGoods || []).some(g=>g.id===input.good))this.catalogGood217(input.good);
         const g = this.find("goods", input.good, true);
         if (!["currency", "commodity"].includes(input.commitmentKind) || (g.mode === "currency") !== (input.commitmentKind === "currency")) throw Error("دارایی تعهد با نوع تعهد سازگار نیست");
         if (input.commitmentKind === "commodity") {
@@ -1266,7 +1351,7 @@
         }
         const amount = this.precision(pos(input.amount), g.unitId);
         if (g.mode === "count" && dec(amount) % SCALE !== 0n) throw Error("تعداد هر قسط باید صحیح باشد");
-        const count = Number(norm(input.count));
+        const count = Number(norm(input.count).replace(/[,٬]/g,""));
         if (!Number.isInteger(count) || count < 1 || count > 600) throw Error("تعداد اقساط باید بین ۱ تا ۶۰۰ باشد");
         if (!Array.isArray(input.dues) || input.dues.length !== count) throw Error("برنامهٔ سررسید کامل نیست");
         for (let i=0;i<count;i++) {
@@ -1555,7 +1640,7 @@
       });
       return d;
     }
-    reverse(id, reason, token) {
+    reverse(id, reason, token, date) {
       return this.transaction(() => {
         const d = this.find("documents", id);
         if (!reason.trim()) throw Error("علت برگشت الزامی است");
@@ -1585,7 +1670,7 @@
           )
             throw Error("برگشت باعث موجودی منفی می‌شود");
         this.s.reservations = this.s.reservations.filter((x) => x.trade !== id);
-        return this.append({ token, type: "reversal", notes: reason }, es, {
+        return this.append({ token, type: "reversal", notes: reason, date }, es, {
           reversalOf: id,
           related: d.related,
           component: d.component,

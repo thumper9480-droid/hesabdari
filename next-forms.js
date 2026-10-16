@@ -8,6 +8,7 @@ globalThis.SadraForms214 = {
     const active = kind => (ledger().s[kind] || []).filter(x=>x.active!==false);
     let invoice = null, contract = freshContract(), invoiceRow = freshInvoiceRow216(), invoiceFocus = "invoice214-number";
     function freshContract() { return {token:uid(),title:"",affectAccount:"",direction:"",partyKind:"",partyId:"",bankId:"",groupId:"",commitmentKind:"",good:"",goodsGroup:"",amount:"",count:"",firstDue:today(),tag:""}; }
+    function integer217(value){return Number(norm(value).replace(/[,٬]/g,""));}
     function today() {
       const parts = new Intl.DateTimeFormat("en-US-u-ca-persian",{timeZone:"Asia/Tehran",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
       return ["year","month","day"].map(k=>parts.find(p=>p.type===k).value).join("/");
@@ -43,6 +44,8 @@ globalThis.SadraForms214 = {
       root.classList.add("party-fields214");
       const options={banks:"بانک‌ها",funds:"صندوق‌ها",expenses:"هزینه‌ها",incomes:"درآمد",people:"افراد"};
       if(config.allowInstallments)options.installments="اقساط";
+      const assetNature=config.goodId?"commodity":config.assetId?ledger().s.assets.find(a=>a.id===config.assetId)?.nature:null;
+      if(assetNature==="commodity")delete options.banks;
       let parentPluses=0;
       root.addEventListener("keydown",e=>{
         if(e.ctrlKey || e.metaKey || e.altKey)return;
@@ -84,20 +87,20 @@ globalThis.SadraForms214 = {
         const kind=state.partyKind;if(!kind)return;
         let list=[];
         if(kind==="installments") {
-          const candidates=(ledger().s.installmentContracts214 || []).filter(c=>ledger().s.goods.find(g=>g.id===c.good)?.assetId===config.assetId && c.direction===(config.operation==="receive"?"receivable":"payable") && c.dues.some(d=>dec(ledger().installmentRemaining216(c.id,d.id))>0n));
+          const candidates=(ledger().s.installmentContracts214 || []).filter(c=>(config.goodId?c.good===config.goodId:ledger().s.goods.find(g=>g.id===c.good)?.assetId===config.assetId) && c.direction===(config.operation==="receive"?"receivable":"payable") && c.dues.some(d=>dec(ledger().installmentRemaining216(c.id,d.id))>0n));
           add("contractId","نام قرارداد",candidates.map(c=>({id:c.id,name:c.title+" — "+c.partyName})),()=>{state.dueId="";state.partyId=state.contractId;});
           if(state.contractId) {
             const c=candidates.find(c=>c.id===state.contractId);
             const dues=c?c.dues.map((d,i)=>({id:d.id,name:"قسط "+f(i+1)+" — "+f(d.jalali)+" — مانده "+f(ledger().installmentRemaining216(c.id,d.id))})).filter(d=>dec(ledger().installmentRemaining216(c.id,d.id))>0n):[];
             add("dueId","قسط قرارداد",dues);state.partyId=state.contractId;
           }
-          root.append(el("small","در اقساط، بانک یا صندوق سربرگ محل واقعی دریافت/پرداخت است. قراردادهای قبلی از مسیر تسویهٔ قبلی در دسترس‌اند.","n-muted"));return;
+          root.append(el("small","در اقساط، بانک یا صندوق سربرگ محل واقعی دریافت/پرداخت دارایی است. قراردادهای قبلی از مسیر تسویهٔ قبلی در دسترس‌اند.","n-muted"));return;
         }
         if(kind==="banks") {
           add("bankId","نام بانک",active("bankInstitutions"),parentChanged);
           if(!state.bankId)return;
           list=active("funds").filter(x=>x.legacyKind==="banks" && x.bankId===state.bankId).map(x=>({...x,name:x.accountNumber || x.name}));
-        } else if(kind==="funds") list=active("funds").filter(x=>x.legacyKind!=="banks");
+        } else if(kind==="funds") list=active("funds").filter(x=>x.legacyKind!=="banks" && (!assetNature || x.nature===assetNature));
         else if(kind==="expenses" || kind==="people") {
           add("groupId",kind==="expenses"?"محل هزینه":"گروه افراد",active(kind==="expenses"?"expenseGroups":"peopleGroups"),parentChanged);
           if(!state.groupId)return;
@@ -153,7 +156,7 @@ globalThis.SadraForms214 = {
     }
     function persistInvoice(error) {
       if(!invoice)return;
-      try {if(invoice.status==="posted")return true;if(env.needsReview())throw Error("برای ذخیرهٔ پیش‌نویس ابتدا مانده‌های انتقالی را بررسی کنید");ledger().saveInvoiceHeader214(invoice);if(error)error.textContent="";return true;}catch(e){if(error)showError(error,e);else env.message(e.message,true);return false;}
+      try {if(["posted","deleted"].includes(invoice.status))return true;if(env.needsReview())throw Error("برای ذخیرهٔ پیش‌نویس ابتدا مانده‌های انتقالی را بررسی کنید");ledger().saveInvoiceHeader214(invoice);if(error)error.textContent="";return true;}catch(e){if(error)showError(error,e);else env.message(e.message,true);return false;}
     }
     function reserveInvoice() {
       invoiceRow=freshInvoiceRow216();invoiceFocus="invoice214-number";
@@ -164,27 +167,27 @@ globalThis.SadraForms214 = {
     function invoiceScreen() {
       if(!invoice)reserveInvoice();
       const frame=el("section",null,"invoice214-frame"), actions=bar(), form=el("form",null,"invoice214-form"), grid=el("div",null,"invoice214-header"), error=el("div");
-      const existing=[...(ledger().s.invoiceHeaders214 || [])].sort((a,b)=>a.number-b.number),position=existing.findIndex(d=>d.id===invoice.id);
+      const existing=[...(ledger().s.invoiceHeaders214 || []).filter(h=>h.status!=="deleted")].sort((a,b)=>a.number-b.number),position=existing.findIndex(d=>d.id===invoice.id);
       const previous=btn("سند قبلی",()=>{if(!persistInvoice(error))return;if(position>0){invoice=clone(existing[position-1]);invoiceRow=freshInvoiceRow216();rerender();}});
       previous.disabled=position<=0;
       const next=btn("سند بعدی",()=>{if(!persistInvoice(error))return;if(position>=0 && position<existing.length-1){invoice=clone(existing[position+1]);invoiceRow=freshInvoiceRow216();}else reserveInvoice();rerender();});
-      actions.append(previous,next);actions.classList.add("invoice214-actions");
+      actions.append(previous,next,btn("F1 فاکتور جدید",()=>shortcut("F1")),btn("F2 سطر جدید",()=>shortcut("F2")),btn("F3 اصلاح فاکتور",()=>shortcut("F3")),btn("F4 حذف فاکتور",()=>shortcut("F4"),"danger"),btn("F5 چاپ فاکتور",()=>shortcut("F5")));actions.classList.add("invoice214-actions");
       const number=input(invoice.number);number.id="invoice214-number";number.readOnly=true;number.inputMode="numeric";number.setAttribute("aria-label","شماره فاکتور");grid.append(field("شماره فاکتور",number));
       const date=el("div",null,"invoice214-date"),parts=invoice.jalali.split("/"), dateControls=[];
       ["سال","ماه","روز"].forEach((title,i)=>{const c=input(parts[i] || "");c.id="invoice214-"+["year","month","day"][i];c.inputMode="numeric";c.maxLength=i===0?4:2;c.setAttribute("aria-label",title);c.oninput=()=>{invoice.jalali=dateControls.map(n=>n.value).join("/");persistInvoice(error);};dateControls.push(c);date.append(c);});
       grid.append(field("تاریخ شمسی",date));
       let lineSection;
       const parties=el("div");partyFields(parties,invoice,()=>{persistInvoice(error);if(lineSection)lineSection.hidden=!invoice.partyId;},"invoice214",{onComplete:()=>{try{jalali(invoice.jalali);ledger().validateParty214(invoice);if(!persistInvoice(error))return;lineSection.hidden=false;lineSection.querySelector("#row216-operation")?.focus();}catch(e){showError(error,e);}}});grid.append(parties);
-      if(invoice.rows?.length || invoice.status==="posted")parties.querySelectorAll("input,select,button").forEach(control=>control.disabled=true);
+      if((invoice.rows?.length && invoice.status!=="editing") || invoice.status==="posted")parties.querySelectorAll("input,select,button").forEach(control=>control.disabled=true);
       if(invoice.status==="posted")dateControls.forEach(control=>control.disabled=true);
       form.append(grid,error);form.onsubmit=e=>e.preventDefault();
       enterFlow(form,control=>{if(dateControls.includes(control)){const index=dateControls.indexOf(control),value=Number(norm(control.value));if(!Number.isInteger(value)||value<1||(index===0&&(value<1000||value>=1700))||(index===1&&value>12)||(index===2&&value>31))throw Error(""+["سال","ماه","روز"][index]+" معتبر وارد کنید");if(index===2){invoice.jalali=jalali(invoice.jalali);persistInvoice(error);}}});
       if(env.needsReview()){error.textContent="برای ذخیرهٔ سربرگ ابتدا مانده‌های قبلی را بررسی کنید.";error.className="n-error";frame.append(btn("بررسی مانده‌های قبلی",()=>env.openReview()));}
       frame.append(actions,form);host.append(frame);
-      lineSection=el("section",null,"invoice216-lines");lineSection.hidden=!invoice.partyId;host.append(lineSection);invoiceLines216(lineSection,error);
+      lineSection=el("section",null,"invoice216-lines");lineSection.id="invoice217-lines";lineSection.hidden=!invoice.partyId;host.append(lineSection);invoiceLines216(lineSection,error);
       document.getElementById(invoiceFocus)?.focus();invoiceFocus="invoice214-number";
     }
-    function freshInvoiceRow216() {return {operation:"",receiptKind:"",assetId:"",partyKind:"",partyId:"",bankId:"",groupId:"",contractId:"",dueId:"",amount:"",tag:"",notes:""};}
+    function freshInvoiceRow216() {return {good:"",goodsGroup:"",unitId:"",count:"",feeValue:"",operation:"",receiptKind:"",assetId:"",partyKind:"",partyId:"",bankId:"",groupId:"",contractId:"",dueId:"",amount:"",tag:"",notes:""};}
     function invoiceLines216(section,headerError) {
       const posted=invoice.status==="posted", container=el("div",null,"invoice216-editor");
       if(!posted)section.append(container);
@@ -192,7 +195,7 @@ globalThis.SadraForms214 = {
       function drawEditor() {
         container.replaceChildren();const r=invoiceRow,form=el("form"),grid=el("div",null,"n-grid"),error=el("div");
         function dropdown(key,title,items,after,required=true) {
-          const c=select(items,r[key] || "");c.id="row216-"+key;c.required=required;grid.append(field(title,c));
+          const c=select(items,r[key] || "",required?null:"بدون برچسب");c.id="row216-"+key;c.required=required;grid.append(field(title,c));
           const change=()=>{const previous=r[key];r[key]=c.value;if(after && previous!==c.value){after();drawEditor();document.getElementById(c.id)?.focus();}};
           c.onchange=change;c.addEventListener("keydown",e=>{if(e.isComposing)return;if(e.key==="ArrowDown" || e.key==="ArrowUp"){e.preventDefault();e.stopPropagation();c.selectedIndex=Math.max(0,Math.min(c.options.length-1,c.selectedIndex+(e.key==="ArrowDown"?1:-1)));change();}else if(e.key==="Enter"){e.preventDefault();e.stopPropagation();if(c.required && !c.value){showError(error,new Error(title+" را انتخاب کنید"));return;}focusNext(form,c);}});
           return c;
@@ -200,20 +203,51 @@ globalThis.SadraForms214 = {
         dropdown("operation","نوع عملیات",[{id:"receive",name:"دریافت"},{id:"pay",name:"پرداخت"},{id:"buy",name:"خرید"},{id:"sell",name:"فروش"}],()=>{r.receiptKind="";r.assetId="";r.partyKind="";r.partyId="";r.bankId="";r.groupId="";r.contractId="";r.dueId="";});
         if(["receive","pay"].includes(r.operation)) {
           dropdown("receiptKind",r.operation==="receive"?"نوع دریافت":"نوع پرداخت",[{id:"currency",name:"ارزی"},{id:"commodity",name:"کالایی"}],()=>{r.assetId="";r.partyKind="";r.partyId="";});
-          if(r.receiptKind==="currency") {
-            dropdown("assetId","نوع ارز",active("assets").filter(a=>a.nature==="currency"),()=>{r.partyKind="";r.partyId="";r.bankId="";r.groupId="";r.contractId="";r.dueId="";});
-            if(r.assetId) {
-              const party=el("div",null,"invoice216-party");partyFields(party,r,()=>{},"row216",{allowInstallments:true,assetId:r.assetId,operation:r.operation});grid.append(party);
-              const amount=input(r.amount);amount.id="row216-amount";amount.required=true;amount.inputMode="decimal";amount.oninput=()=>r.amount=amount.value;grid.append(field(r.operation==="receive"?"مقدار ارز دریافتی":"مقدار ارز پرداختی",amount));
-              dropdown("tag","برچسب سطر",active("tags"),null,false);
-              const notes=el("textarea");notes.id="row216-notes";notes.value=r.notes;notes.oninput=()=>r.notes=notes.value;notes.addEventListener("keydown",e=>{if(e.key==="Enter" && !e.shiftKey && !e.isComposing){e.preventDefault();e.stopPropagation();focusNext(form,notes);}});grid.append(field("توضیحات سطر",notes));
-              grid.append(el("p",r.partyKind==="installments"?"در اقساط، مبلغ در بانک/صندوق سربرگ ثبت و از ماندهٔ قسط انتخاب‌شده کم می‌شود.":r.operation==="receive"?"دریافت از طرف حساب سربرگ در طرف انتخاب‌شدهٔ این سطر ثبت می‌شود.":"پرداخت از طرف انتخاب‌شدهٔ این سطر به طرف حساب سربرگ ثبت می‌شود.","n-muted"));
+          if(r.receiptKind==="currency")dropdown("assetId","نوع ارز",active("assets").filter(a=>a.nature==="currency"),()=>{r.partyKind="";r.partyId="";r.bankId="";r.groupId="";r.contractId="";r.dueId="";});
+          let chosen=null;
+          function numberField(key,title,readOnly=false) {
+            const c=input(r[key] || "");c.id="row216-"+key;c.required=!readOnly;c.readOnly=readOnly;c.inputMode="decimal";c.dataset.numeric217="true";c.oninput=()=>{r[key]=c.value;if(key==="count")updateWeight();};grid.append(field(title,c));return c;
+          }
+          let weightControl;
+          function updateWeight() {
+            if(!weightControl || !chosen)return;
+            try{r.amount=ledger().convert(mul(r.count || "0",chosen.catalogPieceWeight || chosen.standardWeight),chosen.catalogPieceUnitId || chosen.standardWeightUnitId,r.unitId || chosen.catalogUnitId || chosen.unitId);weightControl.value=r.amount;}catch(e){r.amount="";weightControl.value="";}
+          }
+          if(r.receiptKind==="commodity") {
+            const goods=commodityCatalog217(),groups=[...active("groups")];if(goods.some(g=>!g.groupId))groups.push({id:"__ungrouped",name:"کالاهای قبلی بدون گروه"});
+            dropdown("goodsGroup","گروه کالا",groups,()=>{r.good="";r.unitId="";r.amount="";r.count="";r.partyKind="";r.partyId="";});
+            if(r.goodsGroup)dropdown("good","نام کالا",goods.filter(g=>r.goodsGroup==="__ungrouped"?!g.groupId:[g.groupId,g.subgroupId].includes(r.goodsGroup)),()=>{
+              const g=goods.find(g=>g.id===r.good);r.unitId=g?.catalogUnitId || g?.unitId || "";r.amount="";r.count="";r.feeValue="";r.partyKind="";r.partyId="";r.contractId="";r.dueId="";
+            });
+            chosen=goods.find(g=>g.id===r.good);
+            if(chosen) {
+              const mode=chosen.catalogMode || (chosen.standardWeight?"weightCount":chosen.mode),dimension=mode==="count"?"count":"weight";
+              r.unitId ||= chosen.catalogUnitId || chosen.unitId || active("units").find(u=>u.dimension===dimension)?.id || "";
+              dropdown("unitId","واحد مقدار",active("units").filter(u=>u.dimension===dimension && (dimension==="weight" || u.id===(chosen.catalogUnitId || chosen.unitId))),()=>{if(mode==="weightCount")updateWeight();else r.amount="";});
+              grid.append(el("p","مبنای نرخ: هر "+name("units",chosen.catalogRateUnitId || chosen.rateUnitId || r.unitId)+(chosen.catalogPurity || chosen.purity?" — عیار "+f(chosen.catalogPurity || chosen.purity):""),"n-muted"));
+              if(mode==="weightCount") {
+                grid.append(el("p","وزن ثابت هر قطعه: "+f(chosen.catalogPieceWeight || chosen.standardWeight)+" "+name("units",chosen.catalogPieceUnitId || chosen.standardWeightUnitId),"n-muted"));
+                numberField("count","تعداد قطعات");weightControl=numberField("amount","وزن محاسبه‌شده",true);updateWeight();
+              } else numberField("amount",mode==="count"?"تعداد کالا":r.operation==="receive"?"وزن دریافتی":"وزن پرداختی");
+              if(chosen.catalogHasFee==="yes") {
+                const percent=chosen.catalogFeeBasis==="weightPercent";
+                if(mode==="weight" && !percent)numberField("count","تعداد برای محاسبهٔ کارمزد");
+                if(chosen.catalogFeeMode==="variable")numberField("feeValue",percent?"کارمزد متغیر — درصد از وزن":"کارمزد متغیر — ریال به‌ازای هر عدد");
+                else grid.append(el("p","کارمزد ثابت: "+f(chosen.catalogFeeValue)+(percent?" درصد از وزن":" ریال به‌ازای هر عدد"),"n-muted"));
+              }
             }
           }
+          if((r.receiptKind==="currency" && r.assetId) || (r.receiptKind==="commodity" && chosen)) {
+            const party=el("div",null,"invoice216-party");partyFields(party,r,()=>{},"row216",{allowInstallments:true,assetId:r.assetId,goodId:chosen?.id,operation:r.operation});grid.append(party);
+            if(r.receiptKind==="currency")numberField("amount",r.operation==="receive"?"مقدار ارز دریافتی":"مقدار ارز پرداختی");
+            dropdown("tag","برچسب سطر",active("tags"),null,false);
+            const notes=el("textarea");notes.id="row216-notes";notes.value=r.notes;notes.oninput=()=>r.notes=notes.value;notes.addEventListener("keydown",e=>{if(e.key==="Enter" && !e.shiftKey && !e.isComposing){e.preventDefault();e.stopPropagation();focusNext(form,notes);}});grid.append(field("توضیحات سطر",notes));
+            grid.append(el("p",r.partyKind==="installments"?"مقدار در بانک/صندوق واقعی سربرگ ثبت و از ماندهٔ قسط کم می‌شود.":r.operation==="receive"?"دریافت از طرف حساب سربرگ، در طرف انتخاب‌شدهٔ سطر ثبت می‌شود.":"پرداخت از طرف انتخاب‌شدهٔ سطر، به طرف حساب سربرگ ثبت می‌شود.","n-muted"));
+          }
         }
-        const supported=["receive","pay"].includes(r.operation) && r.receiptKind==="currency";
-        if(r.operation && (!supported && (r.receiptKind || ["buy","sell"].includes(r.operation))))grid.append(el("p","جزئیات این مسیر هنوز ارائه نشده است؛ فعلاً فقط دریافت و پرداخت ارزی قابل ثبت‌اند.","n-notice"));
-        const add=el("button",r.id?"ذخیرهٔ سطر":"ثبت سطر","primary");add.type="submit";add.disabled=!supported || !r.assetId || env.needsReview();
+        const supported=["receive","pay"].includes(r.operation) && ["currency","commodity"].includes(r.receiptKind);
+        if(r.operation && (!supported && (r.receiptKind || ["buy","sell"].includes(r.operation))))grid.append(el("p","جزئیات خرید و فروش هنوز ارائه نشده است؛ دریافت و پرداخت ارزی و کالایی قابل ثبت‌اند.","n-notice"));
+        const add=el("button",r.id?"ذخیرهٔ سطر":"ثبت سطر","primary");add.id="row217-save";add.type="submit";add.disabled=!supported || (r.receiptKind==="currency"?!r.assetId:!r.good) || env.needsReview();
         form.append(grid,error,bar(add,btn("سطر تازه",()=>{invoiceRow=freshInvoiceRow216();drawEditor();container.querySelector("#row216-operation")?.focus();})));
         form.onsubmit=e=>{e.preventDefault();try{
           if(!persistInvoice(headerError))return;
@@ -226,20 +260,51 @@ globalThis.SadraForms214 = {
       const rows=invoice.rows || [];
       if(rows.length) {
         const partyTitle=row=>{if(row.partyKind!=="installments")return name(row.partyKind==="banks"?"funds":row.partyKind,row.partyId);const c=(ledger().s.installmentContracts214 || []).find(c=>c.id===row.contractId),index=c?.dues.findIndex(d=>d.id===row.dueId) ?? -1;return c?c.title+" — قسط "+f(index+1)+" ("+f(c.dues[index]?.jalali)+")":"اقساط";};
-        section.append(card(el("h3","سطرهای فاکتور "+f(invoice.number)),table(["سطر","عملیات","ارز","طرف سطر","مقدار","برچسب","توضیحات"],rows.map((r,i)=>({item:r,cells:[f(i+1),r.operation==="receive"?"دریافت":"پرداخت",r.assetName,partyTitle(r),f(r.amount),(r.tags || []).map(id=>name("tags",id)).join("، "),r.notes]})),r=>posted?bar(btn("نمایش ثبت مالی",()=>env.showDocument(r.documentId))):bar(btn("ویرایش",()=>{invoiceRow={...clone(r),tag:r.tags?.[0] || ""};drawEditor();container.querySelector("#row216-operation")?.focus();}),btn("حذف",()=>{try{ledger().removeInvoiceLine216(invoice.id,r.id);invoiceRow=freshInvoiceRow216();refreshInvoice();}catch(e){env.message(e.message,true);}},"danger")))));
+        section.append(card(el("h3","سطرهای فاکتور "+f(invoice.number)),table(["سطر","عملیات","ارز / کالا","طرف سطر","مقدار","تعداد","برچسب","توضیحات"],rows.map((r,i)=>({item:r,cells:[f(i+1),r.operation==="receive"?"دریافت":"پرداخت",r.assetName,partyTitle(r),f(r.amount)+" "+name("units",r.unitId),f(r.count),(r.tags || []).map(id=>name("tags",id)).join("، "),r.notes]})),r=>bar(...(posted?[btn("نمایش ثبت مالی",()=>env.showDocument(r.documentId))]:[]),btn("ویرایش",()=>{try{if(posted)invoice=ledger().beginInvoiceEdit217(invoice.id);invoiceRow={...clone(r),tag:r.tags?.[0] || ""};invoiceFocus="row216-operation";rerender();}catch(e){env.message(e.message,true);}}),btn("حذف",()=>{try{
+          if(!confirm("این سطر از فاکتور حذف شود؟"))return;
+          if(posted && invoice.rows.length===1){ledger().deleteInvoice217(invoice.id);reserveInvoice();rerender();return;}
+          invoice=ledger().transaction(()=>{if(posted)ledger().beginInvoiceEdit217(invoice.id);ledger().removeInvoiceLine216(invoice.id,r.id);return posted?ledger().postInvoice216(invoice.id,legacyDate(jalali(invoice.jalali))):clone(ledger().find("invoiceHeaders214",invoice.id));});
+          invoiceRow=freshInvoiceRow216();refreshInvoice();
+        }catch(e){env.message(e.message,true);}},"danger")))));
         if(!posted) {
-          const error=el("div");section.append(error,btn("ثبت نهایی سند",()=>{try{
+          const error=el("div");section.append(error,btn(invoice.status==="editing"?"ثبت نهایی اصلاحات":"ثبت نهایی سند",()=>{try{
             if(!persistInvoice(headerError))return;
             const date=legacyDate(jalali(invoice.jalali));invoice=ledger().postInvoice216(invoice.id,date);invoiceRow=freshInvoiceRow216();rerender();env.message("سند شمارهٔ "+f(invoice.number)+" ثبت شد");
           }catch(e){showError(error,e);}},"primary"));
-          section.append(el("p","سطرها تا زدن «ثبت نهایی سند» پیش‌نویس‌اند و اثر مالی ندارند. برای تغییر طرف سربرگ ابتدا سطرهای پیش‌نویس را حذف کنید.","n-muted"));
-        } else section.append(el("p","این سند ثبت شده است؛ تغییر مستقیم سطرها مجاز نیست. جزئیات و برگشت مستند از نمایش ثبت مالی در دسترس است.","n-notice"));
+          section.append(el("p",invoice.status==="editing"?"تا ثبت نهایی اصلاحات، اثر مالی نسخهٔ قبلی برقرار است. اصلاحات در پایان، یکجا اعمال می‌شوند.":"سطرها تا زدن «ثبت نهایی سند» پیش‌نویس‌اند و اثر مالی ندارند. برای تغییر طرف سربرگ ابتدا سطرهای پیش‌نویس را حذف کنید.","n-muted"));
+        } else section.append(el("p","این فاکتور ثبت شده است؛ برای اصلاح از F3 یا ویرایش سطر و برای حذف کامل از F4 استفاده کنید.","n-notice"));
       }
+    }
+    function commodityCatalog217() {
+      const drafts=ledger().s.catalogGoods || [];
+      return [...active("goods").filter(g=>g.mode!=="currency").map(g=>({...g,catalogHasFee:g.feeMode && g.feeMode!=="none"?"yes":"no",catalogFeeMode:g.feeMode==="variable"?"variable":"fixed",catalogFeeBasis:g.feeMode==="gold"?"weightPercent":"perPiece",catalogFeeValue:g.feeMode==="gold"?g.feePercent:mul(g.feeValue || "0","10"),...(drafts.find(d=>d.id===g.id) || {})})),...drafts.filter(d=>d.active!==false && !ledger().s.goods.some(g=>g.id===d.id))].filter(g=>g.active!==false);
+    }
+    function shortcut(key) {
+      try {
+        if(!invoice)return;
+        if(key==="F1") {if(!persistInvoice())return;reserveInvoice();rerender();}
+        if(key==="F2") {
+          if(invoice.status==="posted")invoice=ledger().beginInvoiceEdit217(invoice.id);
+          invoiceRow=freshInvoiceRow216();invoiceFocus="row216-operation";rerender();
+        }
+        if(key==="F3") {invoice=ledger().beginInvoiceEdit217(invoice.id);invoiceFocus="invoice214-number";rerender();env.message("اصلاحات را انجام دهید و ثبت نهایی اصلاحات را بزنید");}
+        if(key==="F4") {if(!confirm("فاکتور شمارهٔ "+f(invoice.number)+" و اثر مالی تمام سطرهای آن حذف شود؟"))return;ledger().deleteInvoice217(invoice.id);reserveInvoice();rerender();env.message("فاکتور حذف شد");}
+        if(key==="F5")printInvoice217();
+      } catch(e){env.message(e.message,true);}
+    }
+    function printInvoice217() {
+      document.getElementById("invoice217-print")?.remove();
+      const sheet=el("section");sheet.id="invoice217-print";
+      sheet.append(el("h2","حسابداری محمد صدرا — فاکتور "+f(invoice.number)),el("p","تاریخ: "+f(invoice.jalali)),el("p","طرف حساب: "+name(["banks","funds"].includes(invoice.partyKind)?"funds":invoice.partyKind,invoice.partyId)),el("p",invoice.status==="posted"?"ثبت‌شده":"پیش‌نویس"));
+      sheet.append(table(["ردیف","عملیات","کالا / ارز","طرف سطر","مقدار","تعداد","کارمزد","برچسب","توضیحات"],(invoice.rows || []).map((r,i)=>{const d=ledger().s.documents.find(d=>d.id===r.documentId);return {cells:[f(i+1),r.operation==="receive"?"دریافت":"پرداخت",r.assetName,r.partyKind==="installments"?ledger().s.installmentContracts214.find(c=>c.id===r.contractId)?.title:name(["banks","funds"].includes(r.partyKind)?"funds":r.partyKind,r.partyId),f(r.amount)+" "+name("units",r.unitId),f(r.count),(d?.fees || []).map(fee=>f(fee.quantity)+" "+name("units",ledger().s.goods.find(g=>g.id===fee.good)?.unitId)).join("، "),(r.tags || []).map(id=>name("tags",id)).join("، "),r.notes]};})));
+      document.body.append(sheet);document.body.classList.add("invoice217-printing");
+      const cleanup=()=>{document.body.classList.remove("invoice217-printing");sheet.remove();};
+      window.addEventListener("afterprint",cleanup,{once:true});try{window.print();}finally{cleanup();}
     }
     function installmentsScreen() {
       const form=el("form"),grid=el("div",null,"n-grid"),error=el("div"), v=contract;
       function text(key,title,type="text") {const c=input(v[key] || "",type);c.id="inst214-"+key;c.required=true;c.oninput=()=>{v[key]=c.value;};grid.append(field(title,c));return c;}
-      function dropdown(key,title,items,change,required=true) {const c=select(items,v[key]||"");c.id="inst214-"+key;c.required=required;c.onchange=()=>{v[key]=c.value;if(change)change();};grid.append(field(title,c));return c;}
+      function dropdown(key,title,items,change,required=true) {const c=select(items,v[key]||"",required?null:"بدون برچسب");c.id="inst214-"+key;c.required=required;c.onchange=()=>{v[key]=c.value;if(change)change();};grid.append(field(title,c));return c;}
       text("title","نام قرارداد");
       dropdown("affectAccount","در ریزحساب طرف حساب محاسبه شود؟",[{id:"yes",name:"محاسبه شود"},{id:"no",name:"محاسبه نشود"}]);
       dropdown("direction","نوع اقساط",[{id:"payable",name:"بدهکار شدم"},{id:"receivable",name:"طلبکار شدم"}]);
@@ -266,7 +331,7 @@ globalThis.SadraForms214 = {
       form.onsubmit=e=>{e.preventDefault();try{
         if(env.needsReview())throw Error("ابتدا مانده‌های انتقالی را بررسی کنید");
         if(!["yes","no"].includes(v.affectAccount))throw Error("اثر در ریزحساب را مشخص کنید");
-        const count=Number(norm(v.count));if(!Number.isInteger(count)||count<1||count>600)throw Error("تعداد اقساط بین ۱ تا ۶۰۰ باشد");
+        const count=integer217(v.count);if(!Number.isInteger(count)||count<1||count>600)throw Error("تعداد اقساط بین ۱ تا ۶۰۰ باشد");
         const dues=dueDates(v.firstDue,count),first=jalali(v.firstDue);
         const c=ledger().createInstallments214({...v,affectAccount:v.affectAccount==="yes",dues,date:legacyDate(today()),tags:v.tag?[v.tag]:[]});
         contract=freshContract();rerender();env.message("قرارداد «"+c.title+"» ثبت شد");
@@ -280,6 +345,6 @@ globalThis.SadraForms214 = {
     function showSchedule(c) {
       const d=el("dialog");d.append(el("h3",c.title),table(["قسط","سررسید شمسی","مقدار","مانده"],c.dues.map((due,i)=>({cells:[f(i+1),f(due.jalali),f(due.amount)+" "+c.unit.name,f(ledger().installmentRemaining216(c.id,due.id))+" "+c.unit.name]}))),btn("بستن",()=>d.close()));host.append(d);d.onclose=()=>d.remove();d.showModal();
     }
-    return {invoice:invoiceScreen,installments:installmentsScreen,enter(route){if(route==="operations"){invoice=null;invoiceRow=freshInvoiceRow216();invoiceFocus="invoice214-number";}},today};
+    return {shortcut,invoice:invoiceScreen,installments:installmentsScreen,enter(route){if(route==="operations"){invoice=null;invoiceRow=freshInvoiceRow216();invoiceFocus="invoice214-number";}},today};
   }
 };

@@ -13,7 +13,7 @@ globalThis.SadraNext = {
       goods: "کالاها",
       tags: "برچسب‌ها",
       units: "معرفی واحدها",
-      assets: "معرفی دارایی‌ها",
+      assets: "معرفی ارزها",
       operations: "ثبت سند",
       installments: "اقساط",
       inventory: "موجودی و گردش کالا",
@@ -39,7 +39,7 @@ globalThis.SadraNext = {
       goods: "کالاها",
       tags: "مدیریت برچسب‌ها",
       units: "معرفی واحدها",
-      assets: "معرفی دارایی‌ها",
+      assets: "معرفی ارزها",
       assetTypes: "انواع دارایی",
     };
     const types = {
@@ -98,7 +98,7 @@ globalThis.SadraNext = {
       if (v === undefined || v === null || v === "") return "—";
       return String(v).replace(/\d/g, (c) => "۰۱۲۳۴۵۶۷۸۹"[c]);
     };
-    const select = (items, value = "", blank = "انتخاب کنید") => {
+    const select = (items, value = "", blank = null) => {
       const s = el("select");
       if (blank !== null) {
         const o = el("option", blank);
@@ -113,6 +113,31 @@ globalThis.SadraNext = {
       s.value = value || "";
       return s;
     };
+    function numeric217(control) {
+      if(!control?.matches?.("input") || control.readOnly)return false;
+      const id=control.id || "",label=control.getAttribute("aria-label") || control.closest("label")?.firstChild?.textContent || "";
+      if(/date|year|month|day|number$|docno|account|phone|code|firstDue/i.test(id) || /شماره|تاریخ|سررسید|تلفن|کد|سال|ماه|روز/.test(label))return false;
+      return control.dataset.numeric217==="true" || control.type==="number" || ["decimal","numeric"].includes(control.inputMode) || /مبلغ|مقدار|وزن|تعداد|نرخ|درصد|عیار|کارمزد|ضریب|قیمت|مانده|ارزش/.test(label);
+    }
+    function formatNumber217(c) {
+      if(!numeric217(c))return;
+      if(c.type==="number"){c.type="text";c.inputMode="decimal";}
+      const before=c.value,position=c.selectionStart ?? before.length,offset=before.slice(0,position).replace(/[,٬]/g,"").length;
+      const raw=before.replace(/[,٬]/g,"");
+      if(!/^-?[0-9۰-۹٠-٩]*(?:[.٫][0-9۰-۹٠-٩]*)?$/.test(raw))return;
+      const [whole,fraction]=raw.split(/[.٫]/),separator=raw.includes("٫")?"٫":".";
+      const formatted=whole.replace(/\B(?=([0-9۰-۹٠-٩]{3})+(?![0-9۰-۹٠-٩]))/g,",")+(fraction!==undefined?separator+fraction:"");
+      if(formatted===before)return;c.value=formatted;
+      let n=0,caret=0;while(caret<formatted.length && n<offset){if(formatted[caret]!==",")n++;caret++;}c.setSelectionRange(caret,caret);
+    }
+    document.addEventListener("input",e=>formatNumber217(e.target),true);
+    const cleanControls217=root=>{
+      for(const c of root.querySelectorAll("select")) {
+        const empty=c.value==="";for(const o of [...c.options])if(!o.value && /انتخاب کنید/.test(o.textContent))o.remove();if(empty)c.selectedIndex=-1;
+      }
+      for(const c of root.querySelectorAll("input"))formatNumber217(c);
+    };
+    new MutationObserver(()=>cleanControls217(document)).observe(document.body,{childList:true,subtree:true});
     const choices = (o) =>
       Object.entries(o).map(([id, name]) => ({ id, name }));
     const input = (value = "", type = "text") => {
@@ -630,7 +655,7 @@ globalThis.SadraNext = {
       goods: ["goods", "groups"],
       tags: ["tags"],
       units: ["units"],
-      assets: ["assets", "assetTypes"],
+      assets: ["assets"],
     };
     function render() {
       header();
@@ -887,26 +912,10 @@ globalThis.SadraNext = {
           text("currencyCode", "کد استاندارد ارز (در صورت وجود)"),
           text("decimals", "تعداد رقم اعشار مجاز", "number", true),
         );
-      if (kind === "assets")
-        fields.push(
-          text("symbol", "کد / نماد"),
-          ref(
-            "nature",
-            "ماهیت دارایی",
-            null,
-            choices({ currency: "ارزی", commodity: "کالایی" }),
-          ),
-          ref(
-            "unitId",
-            "واحد اصلی",
-            null,
-            active("units").filter(
-              (u) => (v.nature === "currency") === (u.dimension === "currency"),
-            ),
-          ),
-          text("decimals", "دقت اعشاری", "number"),
-          text("description", "توضیحات"),
-        );
+      if (kind === "assets") {
+        fields[0].label="نام ارز";
+        fields.push(text("symbol","کد / نماد ارز"),text("currencyCode","کد استاندارد ارز (مثلاً USD یا IRR)"),text("decimals","دقت اعشاری","number",true));
+      }
       if (kind === "goods") {
         fields.push(ref("groupId", "گروه کالا", "groups"));
         fields.push(
@@ -921,11 +930,15 @@ globalThis.SadraNext = {
             }),
           ),
         );
+        const dimension=v.catalogMode==="count"?"count":"weight",compatible=active("units").filter(u=>u.dimension===dimension);
+        fields.push(ref("catalogUnitId","واحد پیش‌فرض مقدار",null,compatible));
+        fields.push(ref("catalogRateUnitId","واحد مبنای نرخ",null,compatible.filter(u=>dimension==="weight" || !v.catalogUnitId || u.id===v.catalogUnitId)));
+        if (v.catalogMode==="weightCount")fields.push(ref("catalogPieceUnitId","واحد وزن هر قطعه",null,active("units").filter(u=>u.dimension==="weight")));
         if (["weight", "weightCount"].includes(v.catalogMode))
           fields.push(text("catalogPurity", "عیار", "text", true));
         if (v.catalogMode === "weightCount")
           fields.push(
-            text("catalogPieceWeight", "وزن هر قطعه به گرم", "text", true),
+            text("catalogPieceWeight", "وزن ثابت هر قطعه", "text", true),
           );
         if (["count", "weightCount", "weight"].includes(v.catalogMode)) {
           fields.push(
@@ -997,9 +1010,17 @@ globalThis.SadraNext = {
           : {}),
         ...(kind === "tags" ? { color: "#287d66" } : {}),
         ...(["units", "assets"].includes(kind) ? { decimals: "3" } : {}),
+        ...(kind === "assets" ? {nature:"currency"} : {}),
         ...(kind === "incomes" ? { catalogNature: "currency" } : {}),
         ...clone(item || preset),
       };
+      if(kind==="assets" && values.unitId)values.currencyCode=unit(values.unitId)?.currencyCode || "";
+      if(kind==="goods") {
+        const mode=values.catalogMode==="count"?"count":"weight";
+        values.catalogUnitId ||= values.unitId || active("units").find(u=>u.dimension===mode && (mode==="count"?u.decimals===0:dec(u.factor || "0")===dec("1")))?.id;
+        values.catalogRateUnitId ||= values.rateUnitId || values.catalogUnitId;
+        values.catalogPieceUnitId ||= active("units").find(u=>u.dimension==="weight" && dec(u.factor || "0")===dec("1"))?.id;
+      }
       if (kind === "bankAccounts") {
         values.legacyKind = "banks";
         values.typeId = "currency";
@@ -1060,6 +1081,7 @@ globalThis.SadraNext = {
             }
           }
           control.id = "n-" + spec.key;
+          if(["factor","decimals","catalogPurity","catalogPieceWeight","catalogFeeValue"].includes(spec.key))control.dataset.numeric217="true";
           if (spec.required) control.required = true;
           if (!["tags"].includes(spec.type)) {
             control.oninput = () => {
@@ -1072,6 +1094,7 @@ globalThis.SadraNext = {
                 spec.type === "checkbox" ? control.checked : control.value;
               if (
                 [
+                  "catalogUnitId",
                   "catalogMode",
                   "catalogHasFee",
                   "catalogFeeMode",
@@ -1087,6 +1110,12 @@ globalThis.SadraNext = {
                   "metal",
                 ].includes(spec.key)
               ) {
+                if(spec.key==="catalogMode") {
+                  const d=values.catalogMode==="count"?"count":"weight";
+                  values.catalogUnitId=active("units").find(u=>u.dimension===d && (d==="count"?u.decimals===0:dec(u.factor || "0")===dec("1")))?.id || "";
+                  values.catalogRateUnitId=values.catalogUnitId;
+                }
+                if(spec.key==="catalogUnitId" && values.catalogMode==="count")values.catalogRateUnitId=values.catalogUnitId;
                 if (spec.key === "assetTypeId" && values.assetTypeId) {
                   values.mode = ledger.find(
                     "assetTypes",
@@ -1202,6 +1231,7 @@ globalThis.SadraNext = {
       if (kind === "goods") {
         const x = clone(values);
         x.name = String(x.name || "").trim();
+        for(const key of ["catalogPurity","catalogPieceWeight","catalogFeeValue"])if(x[key]!==undefined && x[key]!=="")x[key]=str(dec(x[key]));
         if (!norm(x.name)) throw Error("نام کالا الزامی است");
         ledger.find(
           "groups",
@@ -1245,31 +1275,32 @@ globalThis.SadraNext = {
           x.catalogOnly = !ledger.s.goods.some((g) => g.id === x.id);
           if (old) Object.assign(old, x);
           else ledger.s.catalogGoods.push(x);
+          ledger.catalogGood217(x.id);
           ledger.audit("catalog-save", "goods", x.id, before, x);
         });
-        return;
+        return clone(x);
       }
+      if(kind==="assets")return ledger.transaction(()=>{
+        const x=clone(values);x.nature="currency";x.decimals=Number(norm(x.decimals).replace(/[,٬]/g,""));
+        if(!x.unitId) {
+          const u=ledger.put("units",{name:x.name,dimension:"currency",decimals:x.decimals,currencyCode:String(x.currencyCode || x.symbol || "").toUpperCase(),active:true});x.unitId=u.id;
+        }
+        if(values.unitId){const u=ledger.find("units",values.unitId);ledger.put("units",{...u,name:x.name,decimals:x.decimals,currencyCode:String(x.currencyCode || u.currencyCode || "").toUpperCase()});}
+        return ledger.put("assets",x);
+      });
       return ledger.put(modelKind(kind), values);
     }
     function catalogGood(x) {
       return {
         ...x,
+        catalogUnitId:x.unitId,catalogRateUnitId:x.rateUnitId || x.unitId,catalogPieceUnitId:x.standardWeightUnitId,
         catalogMode: x.standardWeight
           ? "weightCount"
           : x.mode === "weight"
             ? "weight"
             : "count",
         catalogPurity: x.purity || "",
-        catalogPieceWeight: x.standardWeight
-          ? ledger.convert(
-              x.standardWeight,
-              x.standardWeightUnitId,
-              ledger.s.units.find(
-                (u) =>
-                  u.dimension === "weight" && dec(u.factor || "0") === dec("1"),
-              )?.id || x.standardWeightUnitId,
-            )
-          : "",
+        catalogPieceWeight: x.standardWeight || "",
         catalogHasFee: ["fixed", "variable", "gold"].includes(x.feeMode) ? "yes" : "no",
         catalogFeeBasis: x.feeMode === "gold" ? "weightPercent" : "perPiece",
         catalogFeeMode: x.feeMode === "variable" ? "variable" : "fixed",
@@ -1289,7 +1320,7 @@ globalThis.SadraNext = {
           ]
         : kind === "bankAccounts"
           ? ledger.s.funds.filter((f) => f.legacyKind === "banks")
-          : ledger.s[kind];
+          : kind === "assets" ? ledger.s.assets.filter(a=>a.nature==="currency") : ledger.s[kind];
     function catalog() {
       const search = input(filter.q || "");
       search.placeholder = "جست‌وجو بر اساس نام یا کد";
@@ -1446,12 +1477,12 @@ globalThis.SadraNext = {
                               count: "تعدادی",
                               weight: "وزنی",
                               weightCount: "وزنی–تعدادی",
-                            }[x.catalogMode] || "") +
+                            }[x.catalogMode] || "") + " · واحد مقدار: " + name("units",x.catalogUnitId) + " · نرخ به‌ازای: " + name("units",x.catalogRateUnitId) +
                             (x.catalogPurity
                               ? " · عیار " + f(x.catalogPurity)
                               : "") +
                             (x.catalogMode === "weightCount"
-                              ? " · هر قطعه " + f(x.catalogPieceWeight) + " گرم"
+                              ? " · هر قطعه " + f(x.catalogPieceWeight) + " " + name("units",x.catalogPieceUnitId)
                               : "") +
                             (x.catalogHasFee === "yes"
                               ? x.catalogFeeMode === "fixed"
@@ -3586,7 +3617,7 @@ globalThis.SadraNext = {
     populate212(introductions212, "معرفی‌ها", [
       screenButton212("goods", "goods", "معرفی کالاها"),
       screenButton212("units", "units", "معرفی واحدها"),
-      screenButton212("assets", "assets", "معرفی دارایی"),
+      screenButton212("assets", "assets", "معرفی ارزها"),
       screenButton212("tags", "tags", "معرفی برچسب‌ها"),
     ]);
     populate212(information212, "اطلاعات", [
@@ -3631,17 +3662,19 @@ globalThis.SadraNext = {
       (e) => {
         if (!document.body.classList.contains("next204-active")) return;
         if (["F1", "F2", "F3", "F4", "F5", "F12"].includes(e.key)) {
-          if (e.key !== "F5" && e.key !== "F12") e.preventDefault();
+          if(e.key!=="F12")e.preventDefault();
           e.stopImmediatePropagation();
+          if(route==="operations" && /^F[1-5]$/.test(e.key) && !document.querySelector("dialog[open]"))forms214.shortcut(e.key);
         }
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۶";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۷";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۶";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۷";
     });
     const api = {
+      invoiceShortcut217(key){if(route==="operations" && !document.querySelector("dialog[open]"))forms214.shortcut(key);},
       go,
       get ledger() {
         return ledger;
