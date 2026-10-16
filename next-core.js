@@ -129,6 +129,8 @@
       });
     }
     used(kind, id) {
+      if ((this.s.installmentContracts214 || []).some(c => c.partyId === id || c.bankId === id || c.groupId === id || c.goodsGroup === id || c.good === id || c.tags?.includes(id)) ||
+          (this.s.invoiceHeaders214 || []).some(d => d.partyId === id || d.bankId === id || d.groupId === id)) return true;
       const legacy = this.s.legacy?.references || this.s.legacy?.raw?.db || {};
       if (
         (legacy.installmentContracts || []).some(
@@ -722,6 +724,7 @@
           stock: "funds",
           expense: "expenses",
           income: "incomes",
+          commitment: "funds",
         }[e.bucket];
         if (!e.accountSnapshot && kind)
           e.accountSnapshot = clone(this.find(kind, e.account));
@@ -1083,6 +1086,100 @@
           ...info,
           physical: inStock || outStock,
         });
+      });
+    }
+    validateParty214(input) {
+      const kind = input.partyKind;
+      if (!["banks", "funds", "expenses", "incomes", "people"].includes(kind)) throw Error("نوع طرف حساب را انتخاب کنید");
+      const record = this.find(kind === "banks" ? "funds" : kind, input.partyId, true);
+      if (kind === "banks") {
+        this.find("bankInstitutions", input.bankId, true);
+        if (record.legacyKind !== "banks" || record.bankId !== input.bankId) throw Error("شماره حساب متعلق به بانک انتخاب‌شده نیست");
+      }
+      if (kind === "funds" && record.legacyKind === "banks") throw Error("صندوق معتبر انتخاب کنید");
+      if (kind === "expenses" || kind === "people") {
+        this.find(kind === "expenses" ? "expenseGroups" : "peopleGroups", input.groupId, true);
+        if (record.groupId !== input.groupId) throw Error("طرف حساب متعلق به گروه یا محل انتخاب‌شده نیست");
+      }
+      return record;
+    }
+    newInvoiceHeader214(numberFloor, jalali) {
+      return this.transaction(() => {
+        this.s.invoiceHeaders214 ||= [];
+        const number = Math.max(Number(numberFloor) || 1, Number(this.s.nextInvoiceNumber214) || 1,
+          ...this.s.invoiceHeaders214.map(d => Number(d.number) + 1), ...this.s.documents.map(d => Number(d.number) + 1));
+        const header = {id:uid(),number,jalali,partyKind:"",partyId:"",bankId:"",groupId:"",status:"draft",created:new Date().toISOString()};
+        this.s.nextInvoiceNumber214 = number + 1;
+        this.s.invoiceHeaders214.push(header);
+        this.audit("invoice-header-create", "invoiceHeaders214", header.id, null, header);
+        return clone(header);
+      });
+    }
+    saveInvoiceHeader214(input) {
+      return this.transaction(() => {
+        const current = this.find("invoiceHeaders214", input.id);
+        if (current.status !== "draft") throw Error("این سربرگ قابل ویرایش نیست");
+        if (input.partyId) this.validateParty214(input);
+        const before = clone(current);
+        Object.assign(current, {jalali:String(input.jalali || ""),partyKind:input.partyKind || "",partyId:input.partyId || "",bankId:input.bankId || "",groupId:input.groupId || "",updated:new Date().toISOString()});
+        this.audit("invoice-header-edit", "invoiceHeaders214", current.id, before, current);
+        return clone(current);
+      });
+    }
+    createInstallments214(input) {
+      return this.transaction(() => {
+        if (!String(input.title || "").trim()) throw Error("نام قرارداد الزامی است");
+        const party = this.validateParty214(input);
+        if (!["payable", "receivable"].includes(input.direction)) throw Error("نوع اقساط را انتخاب کنید");
+        if (typeof input.affectAccount !== "boolean") throw Error("اثر قرارداد در ریزحساب را مشخص کنید");
+        if (!this.s.goods.some(g=>g.id===input.good)) {
+          const draft=(this.s.catalogGoods || []).find(g=>g.id===input.good && g.active!==false);
+          if(!draft)throw Error("کالای معتبر انتخاب کنید");
+          this.find("groups",draft.groupId,true);
+          const mode=draft.catalogMode === "count" ? "count" : "weight";
+          if(!["count","weight","weightCount"].includes(draft.catalogMode))throw Error("نوع کالا معتبر نیست");
+          const unit=this.s.units.find(u=>u.active!==false && u.dimension===mode && (mode==="count" ? u.decimals===0 : dec(u.factor || "0")===SCALE));
+          if(!unit)throw Error("ابتدا واحد پایهٔ گرم یا عدد را معرفی کنید");
+          const asset={id:uid(),name:draft.name,nature:"commodity",unitId:unit.id,decimals:unit.decimals,active:true};
+          const g={id:draft.id,name:draft.name,assetId:asset.id,unitId:unit.id,rateUnitId:unit.id,mode,groupId:draft.groupId,active:true,canBuy:true,canSell:true,feeMode:"none",
+            purity:mode==="weight"?pos(draft.catalogPurity):"",metal:mode==="weight"?"عیاردار":"",standardWeight:draft.catalogMode==="weightCount"?pos(draft.catalogPieceWeight):"",standardWeightUnitId:unit.id};
+          this.s.assets.push(asset);this.s.goods.push(g);
+          this.audit("activate-for-installments","assets",asset.id,null,asset);
+          this.audit("activate-for-installments","goods",g.id,null,g);
+        }
+        const g = this.find("goods", input.good, true);
+        if (!["currency", "commodity"].includes(input.commitmentKind) || (g.mode === "currency") !== (input.commitmentKind === "currency")) throw Error("دارایی تعهد با نوع تعهد سازگار نیست");
+        if (input.commitmentKind === "commodity") {
+          if (input.goodsGroup !== "__ungrouped") this.find("groups", input.goodsGroup, true);
+          if (input.goodsGroup === "__ungrouped" ? !!g.groupId : (g.groupId !== input.goodsGroup && g.subgroupId !== input.goodsGroup)) throw Error("کالا متعلق به گروه انتخاب‌شده نیست");
+        }
+        const amount = this.precision(pos(input.amount), g.unitId);
+        if (g.mode === "count" && dec(amount) % SCALE !== 0n) throw Error("تعداد هر قسط باید صحیح باشد");
+        const count = Number(norm(input.count));
+        if (!Number.isInteger(count) || count < 1 || count > 600) throw Error("تعداد اقساط باید بین ۱ تا ۶۰۰ باشد");
+        if (!Array.isArray(input.dues) || input.dues.length !== count) throw Error("برنامهٔ سررسید کامل نیست");
+        for (let i=0;i<count;i++) {
+          if(!input.dues[i].date || !input.dues[i].jalali)throw Error("سررسید معتبر وارد کنید");
+          this.metadata({date:input.dues[i].date});
+          if (i && input.dues[i].date <= input.dues[i-1].date) throw Error("ترتیب سررسیدها معتبر نیست");
+        }
+        const tags = [...new Set(input.tags || [])]; tags.forEach(id=>this.find("tags",id,true));
+        if ((this.s.installmentContracts214 || []).some(c=>c.token===input.token)) throw Error("این قرارداد قبلاً ثبت شده است");
+        const total = this.precision(mul(amount, String(count)),g.unitId);
+        const c = {id:uid(),token:input.token,title:String(input.title).trim(),direction:input.direction,affectAccount:input.affectAccount,
+          partyKind:input.partyKind,partyId:input.partyId,partyName:party.name,bankId:input.bankId || "",groupId:input.groupId || "",
+          commitmentKind:input.commitmentKind,goodsGroup:input.goodsGroup || "",good:g.id,goodName:g.name,unit:clone(this.find("units",g.unitId)),
+          amount,count,total,tags,dues:input.dues.map(d=>({...clone(d),id:uid(),amount})),created:new Date().toISOString(),accountDocumentId:null};
+        if (input.affectAccount) {
+          const bucket = {people:"person",expenses:"expense",incomes:"income",banks:"commitment",funds:"commitment"}[input.partyKind];
+          const quantity = input.direction === "payable" ? sub("0",total) : total;
+          c.accountDocumentId = this.append({token:input.token,type:"installmentOpen",date:input.date,tags,notes:"قرارداد اقساط: " + c.title},
+            [{bucket,account:input.partyId,good:g.id,quantity,purity:g.purity || ""}],
+            {contract:c.id,partyKind:input.partyKind,partyId:input.partyId,person:input.partyKind === "people" ? input.partyId : "",good:g.id,physical:false}).id;
+        }
+        this.s.installmentContracts214 ||= []; this.s.installmentContracts214.push(c);
+        this.audit("installment-create", "installmentContracts214", c.id, null, c);
+        return clone(c);
       });
     }
     incomeRemaining(id) {

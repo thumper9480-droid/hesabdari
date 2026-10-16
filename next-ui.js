@@ -14,7 +14,8 @@ globalThis.SadraNext = {
       tags: "برچسب‌ها",
       units: "معرفی واحدها",
       assets: "معرفی دارایی‌ها",
-      operations: "ثبت سند و حواله",
+      operations: "ثبت سند",
+      installments: "اقساط",
       inventory: "موجودی و گردش کالا",
       accounts: "حساب اشخاص",
       reports: "گزارش‌های جامع",
@@ -50,6 +51,7 @@ globalThis.SadraNext = {
       pay: "پرداخت",
       transfer: "حواله / انتقال",
       opening: "افتتاحیه",
+      installmentOpen: "ثبت تعهد اقساط",
       incomeClaim: "ثبت طلب درآمدی",
       incomeReceipt: "دریافت طلب درآمدی",
       adjustment: "اصلاح موجودی",
@@ -129,6 +131,7 @@ globalThis.SadraNext = {
     host.id = "next204";
     host.hidden = true;
     document.querySelector("main").append(host);
+    let forms214;
     let ledger,
       route = "funds",
       tab = "",
@@ -559,6 +562,7 @@ globalThis.SadraNext = {
     function header() {
       host.replaceChildren();
       host.append(el("h2", labels[route] || names[tab] || "حسابداری صدرا"));
+      if (route === "operations") return;
       host.append(
         bar(
           el(
@@ -646,7 +650,8 @@ globalThis.SadraNext = {
           ),
         );
         catalog();
-      } else if (route === "operations") operations();
+      } else if (route === "operations") forms214.invoice();
+      else if (route === "installments") forms214.installments();
       else if (route === "inventory") inventory();
       else if (route === "accounts") accounts();
       else if (route === "reports") reports();
@@ -773,6 +778,7 @@ globalThis.SadraNext = {
         .forEach((b) =>
           b.classList.toggle("active", b.dataset.next204 === next),
         );
+      if (forms214) forms214.enter(next);
       render();
     }
     function fieldOptions(kind, all = false) {
@@ -971,7 +977,7 @@ globalThis.SadraNext = {
       }
       return fields;
     }
-    function edit(kind, item) {
+    function edit(kind, item, preset = {}, afterSave) {
       const d = el("dialog"),
         title = el("h3", (item ? "ویرایش " : "ایجاد ") + names[kind]),
         form = el("form"),
@@ -990,7 +996,7 @@ globalThis.SadraNext = {
         ...(kind === "tags" ? { color: "#287d66" } : {}),
         ...(["units", "assets"].includes(kind) ? { decimals: "3" } : {}),
         ...(kind === "incomes" ? { catalogNature: "currency" } : {}),
-        ...clone(item || {}),
+        ...clone(item || preset),
       };
       if (kind === "bankAccounts") {
         values.legacyKind = "banks";
@@ -1173,8 +1179,9 @@ globalThis.SadraNext = {
               values.accountNumber +
               " / " +
               name("assets", values.assetId);
-          saveCatalog(kind, values);
+          const saved = saveCatalog(kind, values);
           d.close();
+          if (afterSave) afterSave(saved);
           render();
           message("اطلاعات ذخیره شد");
         } catch (e) {
@@ -1238,7 +1245,7 @@ globalThis.SadraNext = {
         });
         return;
       }
-      ledger.put(modelKind(kind), values);
+      return ledger.put(modelKind(kind), values);
     }
     function catalogGood(x) {
       return {
@@ -2125,6 +2132,7 @@ globalThis.SadraNext = {
             cells: [
               {
                 stock: "موجودی",
+                commitment: "تعهد بانک و صندوق",
                 person: "حساب شخص",
                 expense: "هزینه",
                 income: "درآمد",
@@ -2242,7 +2250,7 @@ globalThis.SadraNext = {
       dialog.showModal();
     }
     function accountName(e) {
-      return e.bucket === "stock"
+      return ["stock", "commitment"].includes(e.bucket)
         ? name("funds", e.account)
         : e.bucket === "person"
           ? name("people", e.account)
@@ -2845,7 +2853,7 @@ globalThis.SadraNext = {
         ["incomeType", "incomeTypes", "نوع درآمد"],
       ];
       for (const [key, kind, title] of fields) {
-        const s = select(fieldOptions(kind, true), filter[key], "همه");
+        const s = select(key === "fund" ? fieldOptions("funds", true).concat(fieldOptions("banks", true)) : fieldOptions(kind, true), filter[key], "همه");
         s.onchange = () => {
           filter[key] = s.value;
           page = 0;
@@ -2879,6 +2887,7 @@ globalThis.SadraNext = {
       const bucket = select(
         choices({
           stock: "موجودی فیزیکی",
+          commitment: "تعهد بانک و صندوق",
           person: "حساب اشخاص",
           expense: "هزینه‌ها",
           income: "درآمدها",
@@ -2985,7 +2994,7 @@ globalThis.SadraNext = {
           (!filter.good || e.good === filter.good) &&
           (!filter.group || g?.groupId === filter.group) &&
           (!filter.fund ||
-            (e.bucket === "stock" && e.account === filter.fund)) &&
+            (["stock", "commitment"].includes(e.bucket) && e.account === filter.fund)) &&
           (!filter.location || fund?.locationId === filter.location) &&
           (!filter.expenseGroup ||
             (e.bucket === "expense" &&
@@ -3041,6 +3050,7 @@ globalThis.SadraNext = {
           types[e.type] || e.type,
           {
             stock: "موجودی",
+            commitment: "تعهد بانک و صندوق",
             person: "اشخاص",
             expense: "هزینه",
             income: "درآمد",
@@ -3154,6 +3164,7 @@ globalThis.SadraNext = {
             "span",
             {
               stock: "موجودی",
+              commitment: "تعهد بانک و صندوق",
               person: "اشخاص",
               expense: "هزینه",
               income: "درآمد",
@@ -3308,7 +3319,7 @@ globalThis.SadraNext = {
       }
     }
     function installmentReport() {
-      const source = bridge.installments?.() || [];
+      const source = [...(bridge.installments?.() || []), ...(ledger.s.installmentContracts214 || []).flatMap(c=>c.dues.map((item,index)=>({contract:c.id,person:c.partyKind === "people" ? c.partyId : "",party:c.partyName,title:c.title,number:index+1,date:item.jalali,total:item.amount,remaining:c.accountDocumentId && ledger.s.documents.some(d=>d.reversalOf===c.accountDocumentId)?"0":item.amount,unit:c.unit.name,good:c.good})))];
       if (!source.length) return;
       const control = select(
         choices({
@@ -3515,6 +3526,7 @@ globalThis.SadraNext = {
       invoice: "operations",
       reconcile: "inventory",
       reports: "reports",
+      installments: "installments",
     };
     // Capture only the replaced destinations; unrelated screens retain their existing behavior.
     document.querySelector("aside").addEventListener(
@@ -3536,6 +3548,7 @@ globalThis.SadraNext = {
     );
     // Change 1 / Update 212: build the confirmed navigation once, preserving destinations.
     const sidebar212 = document.querySelector("aside");
+    sidebar212.dataset.sadraNavigation214 = "true";
     const originalButtons212 = [...sidebar212.querySelectorAll("button")];
     const screenButton212 = (route, page, title) => {
       let button = originalButtons212.find(b => b.dataset.next204 === route || b.dataset.page === page);
@@ -3563,7 +3576,7 @@ globalThis.SadraNext = {
       screenButton212("funds", "funds", "صندوق‌ها"),
       screenButton212("expense", "expense", "هزینه‌ها"),
       screenButton212("income", "income", "درآمد"),
-      nativeButton212("installments", "اقساط"),
+      screenButton212("installments", "installments", "اقساط"),
       screenButton212("people", "directory", "افراد"),
     ]);
     populate212(introductions212, "معرفی‌ها", [
@@ -3620,9 +3633,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۳";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۴";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۳";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۴";
     });
     const api = {
       go,
@@ -3636,7 +3649,7 @@ globalThis.SadraNext = {
       legacyEntries() {
         return ledger
           .entries()
-          .filter((e) => docsAreNew(e))
+          .filter((e) => docsAreNew(e) && e.bucket !== "commitment")
           .map((e) => ({
             kind:
               e.bucket === "person"
@@ -3672,6 +3685,14 @@ globalThis.SadraNext = {
     function docsAreNew(e) {
       return e.type !== "legacy";
     }
+    forms214 = SadraForms214.create({
+      el,btn,field,select,input,bar,card,table,f,name,host,legacyDate,
+      ledger:()=>ledger,raw,openEditor:edit,rerender:render,message,
+      needsReview:()=>migrationNotice,
+      openReview:()=>go("funds"),
+      legacyInstallments:()=>bridge.installments?.() || [],
+      openLegacyInstallments:()=>bridge.openLegacyInstallments?.(),
+    });
     go("funds");
     return api;
   },

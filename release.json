@@ -1,12 +1,13 @@
 {
   "version": "5.9.1-browser",
-  "update": 213,
+  "update": 214,
   "date": "2026-10-16",
   "type": "browser",
-  "label": "اقساط فقط در گروه‌ها؛ پشتیبانی و بازیابی فقط در اطلاعات",
+  "label": "فرم جدید اقساط و سربرگ مرحله‌ای ثبت سند",
   "entry": "index.html",
   "assets": [
     "next-core.js",
+    "next-forms.js",
     "next-ui.js",
     "next-ui.css",
     "fonts/"
