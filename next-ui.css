@@ -401,3 +401,5 @@ aside > button[data-page="installments"], aside > button[data-page="backup"] { d
   #next204 .invoice214-header > label, #next204 .invoice214-header > label:nth-child(2), #next204 .invoice214-header > div { flex: 1 1 100%; }
   #next204 .invoice214-date input, #next204 .invoice214-date input:first-child { flex: 1; width: 0; }
 }
+
+#next204 .party-suggestions214 button[aria-selected="true"] { background: #d9efe5; color: #063e31; box-shadow: inset -3px 0 #258b6d; }
