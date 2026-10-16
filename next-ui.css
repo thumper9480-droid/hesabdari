@@ -403,3 +403,10 @@ aside > button[data-page="installments"], aside > button[data-page="backup"] { d
 }
 
 #next204 .party-suggestions214 button[aria-selected="true"] { background: #d9efe5; color: #063e31; box-shadow: inset -3px 0 #258b6d; }
+
+/* Update 216: editable currency invoice lines and the review table. */
+#next204 .invoice216-lines[hidden] { display: none; }
+#next204 .invoice216-editor { padding: 18px; margin: 14px 0; border: 1px solid #abd1ae; background: #fff; border-radius: 10px; }
+#next204 .invoice216-party { grid-column: 1 / -1; }
+#next204 .invoice216-editor textarea { min-height: 70px; width: 100%; resize: vertical; }
+#next204 .invoice216-lines > .primary { margin-block: 10px; }
