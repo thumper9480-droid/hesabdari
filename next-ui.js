@@ -563,7 +563,7 @@ globalThis.SadraNext = {
         bar(
           el(
             "span",
-            "نسخهٔ آزمایشی ۲۰۹ · اطلاعات در همین مرورگر ذخیره می‌شوند",
+            "نسخهٔ آزمایشی ۲۱۰ · اطلاعات در همین مرورگر ذخیره می‌شوند",
             "n-muted",
           ),
           btn("دانلود پشتیبان", backup),
@@ -956,6 +956,8 @@ globalThis.SadraNext = {
       if (
         ![
           "funds",
+          "bankAccounts",
+          "bankInstitutions",
           "expenses",
           "expenseGroups",
           "incomes",
@@ -1458,6 +1460,8 @@ globalThis.SadraNext = {
                               : x.description || "";
         const simpleCatalog = [
           "funds",
+          "bankAccounts",
+          "bankInstitutions",
           "expenses",
           "expenseGroups",
           "incomes",
@@ -1618,10 +1622,14 @@ globalThis.SadraNext = {
         l.append(chip(t.id));
         ts.append(l);
       }
-      container.append(
-        field("برچسب‌های سند", ts),
-        btn("ایجاد برچسب جدید", () => edit("tags")),
-      );
+      container.append(field("برچسب‌های سند", ts));
+      const rowTags = el("div", null, "n-chips");
+      for (const tag of ledger.s.tags.filter(t => t.active !== false || (values.lineTags || []).includes(t.id))) {
+        const check = input("", "checkbox"); check.checked = (values.lineTags || []).includes(tag.id);
+        check.onchange = () => { values.lineTags = [...(values.lineTags || []).filter(id => id !== tag.id), ...(check.checked ? [tag.id] : [])]; };
+        const label = field(tag.name, check); label.className = "n-choice"; rowTags.append(label);
+      }
+      container.append(field("برچسب‌های سطر عملیات", rowTags), btn("ایجاد برچسب جدید", () => edit("tags")));
     }
     function incomeDialog(receipt) {
       const d = el("dialog"), form = el("form"), grid = el("div", null, "n-grid"), error = el("div", "", "n-error");
@@ -2112,7 +2120,7 @@ globalThis.SadraNext = {
         );
       dialog.append(
         table(
-          ["دفتر", "حساب", "کالا / دارایی", "مقدار", "واحد", "عیار", "جزء"],
+          ["دفتر", "حساب", "کالا / دارایی", "مقدار", "واحد", "عیار", "جزء", "برچسب سطر"],
           d.entries.map((e) => ({
             cells: [
               {
@@ -2128,6 +2136,7 @@ globalThis.SadraNext = {
                 name("units", good(e.good)?.unitId),
               f(e.purity),
               e.component || "—",
+              tags(e.lineTags),
             ],
           })),
         ),
@@ -3527,7 +3536,7 @@ globalThis.SadraNext = {
     );
     document.querySelectorAll("aside small").forEach((e) => {
       if (e.textContent.includes("۲۰۳"))
-        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۹";
+        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۱۰";
     });
     const menu =
       document.getElementById("groupsMenu200") ||
@@ -3577,6 +3586,27 @@ globalThis.SadraNext = {
       while (texts208.nextNode()) texts208.currentNode.nodeValue = texts208.currentNode.nodeValue.replace("سند اولیه", "سرمایه اولیه");
       opening208.setAttribute("aria-label", "سرمایه اولیه");
     }
+    // Update 210: reorder existing destinations; restore requested unit/asset links.
+    const sidebar210 = document.querySelector("aside");
+    sidebar210.querySelectorAll('button[data-next204="accounts"]').forEach(b => b.remove());
+    const unit210 = sidebar210.querySelector('button[data-page="units"]') || btn("معرفی واحدها", () => go("units"));
+    unit210.dataset.next204 = "units"; unit210.textContent = "معرفی واحدها";
+    const asset210 = sidebar210.querySelector('button[data-page="assets"]') || btn("معرفی نوع دارایی", () => go("assets"));
+    asset210.dataset.next204 = "assets"; asset210.textContent = "معرفی نوع دارایی";
+    sidebar210.append(unit210, asset210);
+    const get210 = (page, route) => sidebar210.querySelector('button[data-page="' + page + '"]') || sidebar210.querySelector('button[data-next204="' + route + '"]');
+    const report210 = get210("reports", "reports");
+    if (report210) report210.textContent = "گزارش‌ها";
+    const order210 = [get210("invoice", "operations"), get210("portfolio", "portfolio"), get210("reconcile", "inventory"), report210, menu, get210("opening", "opening"), get210("directory", "people"), get210("goods", "goods"), unit210, asset210].filter(Boolean);
+    const remaining210 = [...sidebar210.children].filter(e => (e.matches("button, details")) && !order210.includes(e) && e.id !== "introductionMenu");
+    const footer210 = el("div", null, "sadra-sidebar-version");
+    const stamps210 = [...sidebar210.querySelectorAll(":scope > small")];
+    if (stamps210.length) {stamps210[0].textContent="نسخه ۵.۹.۱"; footer210.append(stamps210[0]);}
+    else footer210.append(el("small", "نسخه ۵.۹.۱"));
+    if (stamps210.length > 1) {stamps210[1].textContent="نسخه مرورگر · آپدیت ۲۱۰"; footer210.append(stamps210[1]);}
+    else footer210.append(el("small", "نسخه مرورگر · آپدیت ۲۱۰"));
+    for (const extra210 of stamps210.slice(2)) footer210.append(extra210);
+    sidebar210.append(...order210, ...remaining210, footer210);
     document.getElementById("introductionMenu")?.remove();
     // Stop legacy invoice shortcuts from posting hidden forms while a new screen is active.
     window.addEventListener(
@@ -3590,9 +3620,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۹";
+    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۱۰";
     window.addEventListener("load", () => {
-      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۹";
+      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۱۰";
     });
     const api = {
       go,

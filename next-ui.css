@@ -355,3 +355,7 @@ aside #groupsMenu200 button[data-next204="banks"],
 aside #groupsMenu200 button[data-next204="funds"],
 aside #groupsMenu200 button[data-next204="expense"],
 aside #groupsMenu200 button[data-next204="income"] { color: #ff6262 !important; }
+
+/* Version information follows every navigation item and fills spare sidebar height. */
+#app > aside { min-height: 100dvh; }
+aside .sadra-sidebar-version { margin-top: auto; padding-top: 18px; display: flex; flex-direction: column; gap: 5px; }
