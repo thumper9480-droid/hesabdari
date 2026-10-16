@@ -349,3 +349,9 @@ body.next204-active #next204 {
     width: 100%;
   }
 }
+
+/* Update 208: requested group titles only; installment color remains unchanged. */
+aside #groupsMenu200 button[data-next204="banks"],
+aside #groupsMenu200 button[data-next204="funds"],
+aside #groupsMenu200 button[data-next204="expense"],
+aside #groupsMenu200 button[data-next204="income"] { color: #ff6262 !important; }

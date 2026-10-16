@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 207,
+  "update": 208,
   "date": "2026-10-16",
   "type": "browser",
-  "label": "حذف منوی معرفی‌ها از ابتدای بارگذاری صفحه",
+  "label": "جابجایی منوها، عنوان سرمایه اولیه و رنگ عنوان‌های گروه‌ها",
   "entry": "index.html",
   "assets": [
     "next-core.js",

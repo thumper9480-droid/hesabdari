@@ -563,7 +563,7 @@ globalThis.SadraNext = {
         bar(
           el(
             "span",
-            "نسخهٔ آزمایشی ۲۰۷ · اطلاعات در همین مرورگر ذخیره می‌شوند",
+            "نسخهٔ آزمایشی ۲۰۸ · اطلاعات در همین مرورگر ذخیره می‌شوند",
             "n-muted",
           ),
           btn("دانلود پشتیبان", backup),
@@ -3527,7 +3527,7 @@ globalThis.SadraNext = {
     );
     document.querySelectorAll("aside small").forEach((e) => {
       if (e.textContent.includes("۲۰۳"))
-        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۷";
+        e.textContent = "نسخهٔ مرورگر · آپدیت ۲۰۸";
     });
     const menu =
       document.getElementById("groupsMenu200") ||
@@ -3563,6 +3563,20 @@ globalThis.SadraNext = {
       let b = document.querySelector('aside button[data-page="' + r + '"]');
       if (b) b.textContent = title;
     }
+    // Update 208: move the existing buttons so their handlers and data survive.
+    const sidebar208 = document.querySelector("aside");
+    for (const route208 of ["people", "goods"]) {
+      const button208 = menu.querySelector('button[data-next204="' + route208 + '"]');
+      if (button208 && menu !== sidebar208) sidebar208.insertBefore(button208, menu);
+    }
+    const installments208 = sidebar208.querySelector('button[data-page="installments"]');
+    if (installments208) menu.append(installments208);
+    const opening208 = sidebar208.querySelector('button[data-page="opening"]');
+    if (opening208) {
+      const texts208 = document.createTreeWalker(opening208, NodeFilter.SHOW_TEXT);
+      while (texts208.nextNode()) texts208.currentNode.nodeValue = texts208.currentNode.nodeValue.replace("سند اولیه", "سرمایه اولیه");
+      opening208.setAttribute("aria-label", "سرمایه اولیه");
+    }
     document.getElementById("introductionMenu")?.remove();
     // Stop legacy invoice shortcuts from posting hidden forms while a new screen is active.
     window.addEventListener(
@@ -3576,9 +3590,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۷";
+    document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۸";
     window.addEventListener("load", () => {
-      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۷";
+      document.title = "حسابداری صدرا | نسخهٔ آزمایشی ۲۰۸";
     });
     const api = {
       go,
