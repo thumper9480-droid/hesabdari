@@ -437,8 +437,8 @@
             throw Error("سرفصل متعلق به دسته انتخاب‌شده نیست");
         }
         if (kind === "incomes") {
-          this.find("incomeSources", x.sourceId, true);
-          this.find("incomeTypes", x.typeId, true);
+          if (x.sourceId) this.find("incomeSources", x.sourceId, !old || old.sourceId !== x.sourceId);
+          if (x.typeId) this.find("incomeTypes", x.typeId, !old || old.typeId !== x.typeId);
         }
         if (kind === "goods") {
           const a = this.find("assets", x.assetId, true),
@@ -1079,6 +1079,44 @@
         });
       });
     }
+    incomeRemaining(id) {
+      const claim = this.find("documents", id);
+      if (claim.type !== "incomeClaim") throw Error("طلب درآمدی معتبر انتخاب کنید");
+      const active = d => !this.s.documents.some(r => r.reversalOf === d.id);
+      if (!active(claim)) return "0";
+      return str(dec(claim.quantity) - this.s.documents.filter(d => d.type === "incomeReceipt" && d.incomeClaim === id && active(d)).reduce((n,d)=>n+dec(d.settledQuantity),0n));
+    }
+    claimIncome(input) {
+      return this.transaction(() => {
+        this.find("incomes", input.income, true); this.find("people", input.person, true);
+        const g=this.find("goods", input.good, true), quantity=this.precision(pos(input.quantity),g.unitId);
+        if(g.mode==="count" && dec(quantity)%SCALE!==0n)throw Error("تعداد باید عدد صحیح باشد");
+        const purity=g.purity || "";
+        return this.append({...input,type:"incomeClaim"},[
+          {bucket:"person",account:input.person,good:g.id,quantity,purity},
+          {bucket:"income",account:input.income,good:g.id,quantity,purity}
+        ],{income:input.income,person:input.person,good:g.id,quantity,purity,physical:false});
+      });
+    }
+    receiveIncome(input) {
+      return this.transaction(() => {
+        const c=this.find("documents",input.claim), remaining=this.incomeRemaining(c.id);
+        if(dec(remaining)<=0n)throw Error("این طلب ماندهٔ قابل دریافت ندارد");
+        if(input.date && input.date<c.date)throw Error("تاریخ دریافت نمی‌تواند پیش از ثبت طلب باشد");
+        const g=this.find("goods",input.good,true), original=this.find("goods",c.good), quantity=this.precision(pos(input.quantity),g.unitId);
+        this.assertFund(input.fund,g);
+        if(g.mode==="count" && dec(quantity)%SCALE!==0n)throw Error("تعداد باید عدد صحیح باشد");
+        const converted=g.id!==c.good;
+        if(converted && (!String(input.agreement||"").trim() || !input.rate)) throw Error("نرخ و شرح توافق تبدیل الزامی است");
+        const rate=converted?pos(input.rate):"1", settledQuantity=this.precision(mul(quantity,rate),original.unitId);
+        if(dec(settledQuantity)<=0n || dec(settledQuantity)>dec(remaining))throw Error("مقدار تسویه باید مثبت و حداکثر برابر ماندهٔ طلب باشد");
+        const purity=g.purity||"", lot=g.mode==="weight"?uid():"";
+        return this.append({...input,type:"incomeReceipt"},[
+          {bucket:"person",account:c.person,good:c.good,quantity:str(-dec(settledQuantity)),purity:c.purity||""},
+          {bucket:"stock",account:input.fund,good:g.id,quantity,purity,lot}
+        ],{incomeClaim:c.id,related:c.id,income:c.income,person:c.person,good:g.id,quantity,settledQuantity,conversionRate:rate,conversionAgreement:converted?String(input.agreement):"",conversionAt:new Date().toISOString(),physical:true});
+      });
+    }
     payment(input) {
       return this.transaction(() => {
         const d = this.find("documents", input.related);
@@ -1315,7 +1353,7 @@
             (x) =>
               !x.reversalOf &&
               (x.related === id ||
-                x.allocations?.some((a) => a.trade === id)) &&
+                x.allocations?.some((a) => a.trade === id) || x.incomeClaim === id) &&
               !this.s.documents.some((y) => y.reversalOf === x.id),
           )
         )
