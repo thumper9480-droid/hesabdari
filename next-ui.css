@@ -373,3 +373,31 @@ aside details.sadra-navigation-section button { width: 100%; padding-inline-star
 
 /* Changes 2/3: these destinations never appear as top-level navigation items. */
 aside > button[data-page="installments"], aside > button[data-page="backup"] { display: none !important; }
+
+/* Update 214: invoice header follows the supplied RTL layout. */
+#next204 .invoice214-frame { background: #e5f3e5; border: 1px solid #abd1ae; border-radius: 13px; padding: 18px 13px; margin-top: 12px; }
+#next204 .invoice214-actions { justify-content: flex-start; border-bottom: 1px solid #d4e7d2; padding-bottom: 18px; margin-bottom: 18px; }
+#next204 .invoice214-header { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; background: #fff; padding: 18px; border-radius: 10px; }
+#next204 .invoice214-header > label { flex: 0 1 145px; min-width: 120px; }
+#next204 .invoice214-header > label:nth-child(2) { flex: 0 1 275px; }
+#next204 .invoice214-date { display: flex; direction: rtl; gap: 4px; }
+#next204 .invoice214-date input { min-width: 0; width: 65px; text-align: center; }
+#next204 .invoice214-date input:first-child { width: 100px; }
+#next204 .invoice214-header > div { flex: 1 1 210px; min-width: 0; }
+#next204 .party-fields214 { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+#next204 .party-fields214 > label { flex: 1 1 190px; min-width: 0; }
+#next204 .party-fields214 > small { flex-basis: 100%; }
+#next204 .party-search214 { position: relative; }
+#next204 .party-search214 input { width: 100%; }
+#next204 .party-suggestions214 { position: absolute; top: 100%; inset-inline: 0; z-index: 20; max-height: 230px; overflow-y: auto; background: #fff; border: 1px solid #b8ccc5; box-shadow: 0 5px 14px #0002; }
+#next204 .party-suggestions214[hidden] { display: none; }
+#next204 .party-suggestions214 button { width: 100%; text-align: start; border-radius: 0; background: white; color: #163d37; border: 0; }
+#next204 .party-suggestions214 button:hover { background: #e3f2ec; }
+#next204 .inst214-party { grid-column: 1 / -1; }
+#next204 input:focus, #next204 select:focus { outline: 2px solid #36a88c; outline-offset: 1px; }
+#next204 .invoice214-draft-note { font-size: 12px; margin-bottom: 0; }
+@media (max-width: 600px) {
+  #next204 .invoice214-header { padding: 12px; }
+  #next204 .invoice214-header > label, #next204 .invoice214-header > label:nth-child(2), #next204 .invoice214-header > div { flex: 1 1 100%; }
+  #next204 .invoice214-date input, #next204 .invoice214-date input:first-child { flex: 1; width: 0; }
+}
