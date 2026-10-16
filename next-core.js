@@ -1148,7 +1148,7 @@
       if(!asset)asset=this.put("assets",{name:draft.name,nature:"commodity",unitId:u.id,decimals:u.decimals,active:true});
       const pieceUnit=draft.catalogPieceUnitId || old?.standardWeightUnitId || this.s.units.find(u=>u.dimension==="weight" && dec(u.factor || "0")===SCALE)?.id;
       const g={...old,id:draft.id,name:draft.name,active:true,mode,assetId:asset.id,unitId:u.id,rateUnitId:rate.id,groupId:draft.groupId,feeMode:"none",
-        purity:mode==="weight"?draft.catalogPurity || "":"",metal:mode==="weight" && draft.catalogPurity?(old?.metal || "عیاردار"):"",
+        purity:draft.catalogPurity || old?.purity || "",metal:(draft.catalogPurity || old?.purity)?(old?.metal || "عیاردار"):"",
         standardWeight:draft.catalogMode==="weightCount"?pos(draft.catalogPieceWeight):"",standardWeightUnitId:pieceUnit,allowActual:false};
       if(old && this.used("goods",id) && ["mode","unitId","purity","standardWeight","standardWeightUnitId"].some(k=>(g[k] || "")!==(old[k] || "")))throw Error("واحد، عیار و وزن ثابت کالای دارای سابقه قابل تغییر نیست؛ کالای تازه معرفی کنید");
       return this.put("goods",g);
@@ -1329,11 +1329,58 @@
             saved.fees=[clone(c.fee)];
           }
           if(c){saved.quantity=values.amount;saved.count=c.count;saved.displayUnitId=c.unitId;saved.displayAmount=c.displayAmount;}
-          row.documentId=doc.id;ids.push(doc.id);
+          row.documentId=doc.id;
+          row.purity=c?good.purity || "":"";
+          const principal=saved.entries.find(e=>e.account===header.partyId && e.component!=="fee"),direction=principal?(dec(principal.quantity)<0n?-1n:1n):(row.operation==="receive"?-1n:1n);
+          row.signedAmount=str(dec(row.amount)*direction);row.signedCount=row.count?str(dec(row.count)*direction):"";
+          row.feeDetails=(saved.fees || []).map(fee=>{
+            const definition=(this.s.catalogGoods || []).find(g=>g.id===good.id),entry=saved.entries.find(e=>e.component==="fee" && e.good===fee.good);
+            return {...clone(fee),mode:definition?.catalogFeeMode || (good.feeMode==="variable"?"variable":"fixed"),basis:fee.basis || (fee.kind==="gold"?"weightPercent":"perPiece"),value:fee.value || fee.percent || fee.perUnit || "0",unitId:this.find("goods",fee.good).unitId,unitName:this.find("units",this.find("goods",fee.good).unitId).name,signedQuantity:entry?.quantity || fee.quantity};
+          });
+          ids.push(doc.id);
         }
         header.status="posted";delete header.originalDocumentIds;header.documentIds=ids;header.postedAt=new Date().toISOString();
         this.audit("invoice-post","invoiceHeaders214",header.id,null,{number:header.number,documents:ids});
         return clone(header);
+      });
+    }
+    postInvoiceRow218(headerId,input,date,unlocked=false) {
+      return this.transaction(()=>{
+        const h=this.find("invoiceHeaders214",headerId);
+        if(h.status==="deleted")throw Error("فاکتور حذف شده است");
+        if(h.status!=="draft" && !unlocked)throw Error("ابتدا F3 را برای اصلاح فاکتور بزنید");
+        const previousRows=clone(h.rows || []),old=input.id?previousRows.find(r=>r.id===input.id):null;
+        if(input.id && !old)throw Error("سطر یافت نشد");
+        // Reverse only the edited row, so unrelated rows never get posted twice.
+        if(old?.documentId && !this.s.documents.some(d=>d.reversalOf===old.documentId))this.reverse(old.documentId,"اصلاح سطر فاکتور "+h.number,uid(),this.find("documents",old.documentId).date);
+        h.status="draft";delete h.originalDocumentIds;h.rows=old?[old]:[];
+        this.saveInvoiceLine216(h.id,input);this.postInvoice216(h.id,date);
+        const saved=clone(h.rows[0]);h.rows=old?previousRows.map(r=>r.id===old.id?saved:r):[...previousRows,saved];
+        h.documentIds=h.rows.map(r=>r.documentId).filter(Boolean);h.status="posted";
+        this.audit("invoice-row-post","invoiceHeaders214",h.id,old,saved);return clone(h);
+      });
+    }
+    deleteInvoiceRow218(headerId,rowId,unlocked=false) {
+      return this.transaction(()=>{
+        if(!unlocked)throw Error("ابتدا F3 را برای اصلاح فاکتور بزنید");
+        const h=this.find("invoiceHeaders214",headerId),row=h.rows?.find(r=>r.id===rowId);
+        if(!row || h.status==="deleted")throw Error("سطر یافت نشد");
+        if(row.documentId && !this.s.documents.some(d=>d.reversalOf===row.documentId))this.reverse(row.documentId,"حذف سطر فاکتور "+h.number,uid(),this.find("documents",row.documentId).date);
+        h.rows=h.rows.filter(r=>r.id!==rowId);h.documentIds=h.rows.map(r=>r.documentId).filter(Boolean);
+        h.status=h.rows.some(r=>r.documentId)?"posted":"draft";delete h.originalDocumentIds;
+        this.audit("invoice-row-delete","invoiceHeaders214",h.id,row,null);return clone(h);
+      });
+    }
+    updateInvoiceHeader218(input,date,unlocked=false) {
+      return this.transaction(()=>{
+        const h=this.find("invoiceHeaders214",input.id);
+        const changed=["jalali","partyKind","partyId","bankId","groupId"].some(k=>(h[k] || "")!==(input[k] || ""));
+        if(!changed)return clone(h);
+        if(h.rows?.some(r=>r.documentId)) {
+          if(!unlocked)throw Error("ابتدا F3 را بزنید");
+          this.beginInvoiceEdit217(h.id);this.saveInvoiceHeader214(input);return this.postInvoice216(h.id,date);
+        }
+        return this.saveInvoiceHeader214(input);
       });
     }
     createInstallments214(input) {
