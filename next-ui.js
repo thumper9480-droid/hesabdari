@@ -13,6 +13,7 @@ globalThis.SadraNext = {
       goods: "کالاها",
       tags: "برچسب‌ها",
       units: "معرفی واحدها",
+      materials: "معرفی جنس دارایی‌ها",
       assets: "معرفی ارزها",
       operations: "ثبت فاکتور",
       installments: "اقساط",
@@ -41,6 +42,7 @@ globalThis.SadraNext = {
       units: "معرفی واحدها",
       assets: "معرفی ارزها",
       assetTypes: "انواع دارایی",
+      materials: "معرفی جنس دارایی‌ها",
     };
     const types = {
       buy: "خرید",
@@ -74,7 +76,7 @@ globalThis.SadraNext = {
       };
     const el = (tag, text, cls) => {
       const e = document.createElement(tag);
-      if (text !== undefined && text !== null) e.textContent = text;
+      if (text !== undefined && text !== null) e.textContent = String(text).replace(/[0-9]/g,c=>"۰۱۲۳۴۵۶۷۸۹"[c]);
       if (cls) e.className = cls;
       return e;
     };
@@ -132,13 +134,13 @@ globalThis.SadraNext = {
       return control.dataset.numeric217==="true" || control.type==="number" || ["decimal","numeric"].includes(control.inputMode) || /مبلغ|مقدار|وزن|تعداد|نرخ|درصد|عیار|کارمزد|ضریب|قیمت|مانده|ارزش/.test(label);
     }
     function formatNumber217(c) {
-      if(!numeric217(c))return;
+      if(!numeric217(c)){if(c?.matches?.("input") && ["numeric","decimal"].includes(c.inputMode) && c.type!=="number")c.value=c.value.replace(/[0-9]/g,n=>"۰۱۲۳۴۵۶۷۸۹"[n]);return;}
       if(c.type==="number"){c.type="text";c.inputMode="decimal";}
       const before=c.value,position=c.selectionStart ?? before.length,offset=before.slice(0,position).replace(/[,٬]/g,"").length;
       const raw=before.replace(/[,٬\u2066-\u2069]/g,"").replace(/٫/g,".");
       if(!/^-?[0-9۰-۹٠-٩]*(?:[.٫][0-9۰-۹٠-٩]*)?$/.test(raw))return;
       const [whole,fraction]=raw.split(/[.٫]/),separator=raw.includes("٫")?"٫":".";
-      const formatted=whole.replace(/\B(?=([0-9۰-۹٠-٩]{3})+(?![0-9۰-۹٠-٩]))/g,",")+(fraction!==undefined?separator+fraction:"");
+      const formatted=(whole.replace(/\B(?=([0-9۰-۹٠-٩]{3})+(?![0-9۰-۹٠-٩]))/g,",")+(fraction!==undefined?separator+fraction:"")).replace(/[0-9]/g,c=>"۰۱۲۳۴۵۶۷۸۹"[c]);
       if(formatted===before)return;c.value=formatted;
       let n=0,caret=0;while(caret<formatted.length && n<offset){if(formatted[caret]!==",")n++;caret++;}c.setSelectionRange(caret,caret);
     }
@@ -181,6 +183,7 @@ globalThis.SadraNext = {
       const e = el("input");
       e.type = type;
       e.value = value;
+      if(type==="number"){e.type="text";e.inputMode="decimal";}
       return e;
     };
     const field = (label, node) => {
@@ -519,6 +522,7 @@ globalThis.SadraNext = {
         bridge.save(state),
       );
       migrationNotice = !!ledger.s.legacy?.needsReview;
+      if(!migrationNotice && !ledger.s.version221){const data=localStorage.getItem("kimia-591-reconstructed");if(data && !localStorage.getItem("kimia-before-update221"))localStorage.setItem("kimia-before-update221",data);ledger.setup221();}
     }
     load();
     function run(fn) {
@@ -576,8 +580,9 @@ globalThis.SadraNext = {
         row.cells.forEach((raw,index) => {
           const unitIndex=headers.findIndex(h=>/^واحد(?:\s|$)/.test(h)),unitName=unitIndex>=0?row.cells[unitIndex]:null,v=numericCell219(raw,headers[index],unitName);
           const td = el("td");
+          if(v==="طلبکار")td.className="invoice219-credit";else if(v==="بدهکار")td.className="invoice219-debit";
           td.append(
-            v instanceof Node ? v : document.createTextNode(String(v ?? "—")),
+            v instanceof Node ? v : document.createTextNode(String(v ?? "—").replace(/[0-9]/g,c=>"۰۱۲۳۴۵۶۷۸۹"[c])),
           );
           tr.append(td);
         });
@@ -694,6 +699,7 @@ globalThis.SadraNext = {
       tags: ["tags"],
       units: ["units"],
       assets: ["assets"],
+      materials: ["materials"],
     };
     function render() {
       header();
@@ -790,6 +796,7 @@ globalThis.SadraNext = {
               : "",
         }))
         .filter((x) => x.bucket !== "unknown");
+      if(ledger.s.toman221)for(const e of current)if(ledger.s.toman221.rialGoods.includes(e.good)){e.good=ledger.s.toman221.good;e.quantity=div(e.quantity,"10");}
       const key = (x) => [x.bucket, x.account, x.good].join("|"),
         prior = new Map(
           (ledger.s.legacyBalances || []).map((x) => [key(x), x]),
@@ -950,7 +957,7 @@ globalThis.SadraNext = {
       }
       if (kind === "assets") {
         fields[0].label="نام ارز";
-        fields.push(text("symbol","کد / نماد ارز"),text("currencyCode","کد استاندارد ارز (مثلاً USD یا IRR)"),text("decimals","دقت اعشاری","number",true));
+        fields.push(text("symbol","کد / نماد ارز"),text("currencyCode","کد استاندارد ارز (مثلاً USD یا EUR)"),text("decimals","دقت اعشاری","number",true));
       }
       if (kind === "goods") {
         fields.push(ref("groupId", "گروه کالا", "groups"));
@@ -970,9 +977,10 @@ globalThis.SadraNext = {
         fields.push(ref("catalogUnitId","واحد پیش‌فرض مقدار",null,compatible));
         fields.push(ref("catalogRateUnitId","واحد مبنای نرخ",null,compatible.filter(u=>dimension==="weight" || !v.catalogUnitId || u.id===v.catalogUnitId)));
         if (v.catalogMode==="weightCount")fields.push(ref("catalogPieceUnitId","واحد وزن هر قطعه",null,active("units").filter(u=>u.dimension==="weight")));
-        if(["weight","weightCount"].includes(v.catalogMode))fields.push(text("balanceMaterial220","جنس دارایی (مانند طلا یا نقره)","text",true));
+        if(["weight","weightCount"].includes(v.catalogMode))fields.push(ref("materialId","جنس دارایی","materials"));
+        if(v.catalogMode==="weight")fields.push(ref("variablePurity221","عیار هنگام دریافت قطعه تعیین شود؟",null,[{id:"no",name:"خیر؛ عیار ثابت"},{id:"yes",name:"بله؛ آب‌شده با عیار متغیر"}]));
         if (["weight", "weightCount","count"].includes(v.catalogMode))
-          fields.push(text("catalogPurity", v.catalogMode==="count"?"عیار (در صورت داشتن)":"عیار", "text", v.catalogMode!=="count"));
+          fields.push(text("catalogPurity", v.catalogMode==="count"?"عیار (در صورت داشتن)":"عیار", "text", v.catalogMode!=="count" && v.variablePurity221!=="yes"));
         if (v.catalogMode === "weightCount")
           fields.push(
             text("catalogPieceWeight", "وزن ثابت هر قطعه", "text", true),
@@ -1003,7 +1011,7 @@ globalThis.SadraNext = {
               fields.push(
                 text(
                   "catalogFeeValue",
-                  v.catalogFeeBasis === "weightPercent" ? "درصد ثابت از وزن فاکتور" : "مبلغ ثابت هر عدد (ریال)",
+                  v.catalogFeeBasis === "weightPercent" ? "درصد ثابت از وزن فاکتور" : "مبلغ ثابت هر عدد (تومان)",
                   "text",
                   true,
                 ),
@@ -1021,6 +1029,7 @@ globalThis.SadraNext = {
           "incomes",
           "incomeSources",
           "goods",
+          "materials",
           "tags",
           "units",
         ].includes(kind)
@@ -1041,6 +1050,7 @@ globalThis.SadraNext = {
         ...(kind === "goods"
           ? {
               catalogMode: "count",
+              variablePurity221:"no",
               catalogHasFee: "no",
               catalogFeeMode: "fixed",
               catalogFeeBasis: "perPiece",
@@ -1055,6 +1065,8 @@ globalThis.SadraNext = {
       };
       if(kind==="assets" && values.unitId)values.currencyCode=unit(values.unitId)?.currencyCode || "";
       if(kind==="goods") {
+        if(typeof values.variablePurity221==="boolean")values.variablePurity221=values.variablePurity221?"yes":"no";
+        if(!values.materialId)values.materialId=ledger.s.materials?.find(m=>norm(m.name)===norm(values.balanceMaterial220 || values.metal))?.id || "";
         if(!values.balanceMaterial220 && values.metal && values.metal!=="عیاردار")values.balanceMaterial220=values.metal;
         const mode=values.catalogMode==="count"?"count":"weight";
         values.catalogUnitId=ledger.catalogUnit219(values)?.id || "";
@@ -1134,6 +1146,7 @@ globalThis.SadraNext = {
                 spec.type === "checkbox" ? control.checked : control.value;
               if (
                 [
+                  "variablePurity221",
                   "catalogUnitId",
                   "catalogMode",
                   "catalogHasFee",
@@ -1281,14 +1294,15 @@ globalThis.SadraNext = {
         );
         if(["weight","weightCount"].includes(x.catalogMode)) {
           const previous=ledger.s.goods.find(g=>g.id===x.id),material=previous?.balanceMaterial220 || (previous?.metal!=="عیاردار"?previous?.metal:"");
-          x.balanceMaterial220=String(x.balanceMaterial220 || material || "").trim();
+          x.balanceMaterial220=ledger.find("materials",x.materialId,true).name;
           if(!x.balanceMaterial220)throw Error("جنس دارایی را برای تفکیک طلا، نقره و سایر دارایی‌ها مشخص کنید");
           if(previous && material && ledger.used("goods",x.id) && norm(material)!==norm(x.balanceMaterial220))throw Error("جنس کالای دارای سابقه متفاوت است؛ کالای تازه معرفی کنید");
         }
         if (!["count", "weight", "weightCount"].includes(x.catalogMode))
           throw Error("نوع کالا را انتخاب کنید");
+        x.variablePurity221=x.variablePurity221==="yes" || x.variablePurity221===true;
         if (
-          ["weight", "weightCount"].includes(x.catalogMode) &&
+          !x.variablePurity221 && ["weight", "weightCount"].includes(x.catalogMode) &&
           (dec(x.catalogPurity) <= 0n || dec(x.catalogPurity) > dec("1000"))
         )
           throw Error("عیار باید بیشتر از صفر و حداکثر ۱۰۰۰ باشد");
@@ -1317,6 +1331,7 @@ globalThis.SadraNext = {
           const before = clone(old || null);
           x.id ||= uid();
           x.updated = new Date().toISOString();
+          x.feeCurrency221="IRT";
           x.catalogOnly = !ledger.s.goods.some((g) => g.id === x.id);
           if (old) Object.assign(old, x);
           else ledger.s.catalogGoods.push(x);
@@ -1326,7 +1341,7 @@ globalThis.SadraNext = {
         return clone(x);
       }
       if(kind==="assets")return ledger.transaction(()=>{
-        const x=clone(values);x.nature="currency";x.decimals=Number(norm(x.decimals).replace(/[,٬]/g,""));
+        const x=clone(values);if(norm(x.name)==="ریال" || String(x.currencyCode || "").toUpperCase()==="IRR")throw Error("ریال از ارزهای عملیاتی حذف شده است؛ از تومان استفاده کنید");x.nature="currency";x.decimals=Number(norm(x.decimals).replace(/[,٬]/g,""));
         if(!x.unitId) {
           const u=ledger.put("units",{name:x.name,dimension:"currency",decimals:x.decimals,currencyCode:String(x.currencyCode || x.symbol || "").toUpperCase(),active:true});x.unitId=u.id;
         }
@@ -1365,7 +1380,7 @@ globalThis.SadraNext = {
           ]
         : kind === "bankAccounts"
           ? ledger.s.funds.filter((f) => f.legacyKind === "banks")
-          : kind === "assets" ? ledger.s.assets.filter(a=>a.nature==="currency") : ledger.s[kind];
+          : kind === "assets" ? ledger.s.assets.filter(a=>a.nature==="currency" && !ledger.s.toman221?.rialAssets.includes(a.id)) : kind==="units"?ledger.s.units.filter(u=>u.dimension!=="currency"):ledger.s[kind];
     function catalog() {
       const search = input(filter.q || "");
       search.placeholder = "جست‌وجو بر اساس نام یا کد";
@@ -1531,7 +1546,7 @@ globalThis.SadraNext = {
                               : "") +
                             (x.catalogHasFee === "yes"
                               ? x.catalogFeeMode === "fixed"
-                                ? " · کارمزد ثابت " + f(x.catalogFeeValue) + (x.catalogFeeBasis === "weightPercent" ? " درصد از وزن فاکتور" : " ریال هر عدد")
+                                ? " · کارمزد ثابت " + f(x.catalogFeeValue) + (x.catalogFeeBasis === "weightPercent" ? " درصد از وزن فاکتور" : " تومان هر عدد")
                                 : " · کارمزد متغیر " + (x.catalogFeeBasis === "weightPercent" ? "درصدی از وزن فاکتور" : "مبلغ هر عدد") + " در سند"
                               : "")
                           : tab === "units"
@@ -1550,6 +1565,7 @@ globalThis.SadraNext = {
           "incomes",
           "incomeSources",
           "goods",
+          "materials",
           "tags",
         ].includes(tab);
         result.replaceChildren(
@@ -2187,15 +2203,15 @@ globalThis.SadraNext = {
     }
     function showBalance220(group) {
       const dialog=el("dialog");dialog.className="balance220-dialog";
-      dialog.append(el("h3",group.name),el("p",amount219(group.quantity,group.unit,true)+" "+group.unit.name+" — "+ledger.label220(group.quantity,group.bucket)));
+      dialog.append(el("h3",group.name),el("p",amount219(group.quantity,group.unit,true)+" "+group.unit.name+" — "+ledger.label221(group.quantity,group.bucket)));
       dialog.append(table(["کالا / ارز","بانک / صندوق / طرف حساب","وزن / مقدار","واحد","تعداد","عیار","شناسه محموله","نشان / انگ","جزء"],group.details.map(d=>({cells:[d.name,name(group.bucket==="person"?"people":group.bucket==="expense"?"expenses":group.bucket==="income"?"incomes":"funds",d.account),amount219(d.quantity,d.unit,true),d.unit.name,d.hasCount?amount219(d.count):"—",f(d.purity),d.lot || "—",[d.mark,d.assay].filter(Boolean).join(" / ") || "—",d.component==="fee"?"کارمزد":"اصل دارایی"]}))));
       if(group.unclassified)dialog.append(el("p","برای تجمیع با کالاهای دیگر، جنس این دارایی را در معرفی کالا مشخص کنید.","n-notice"));
       dialog.append(btn("بستن",()=>dialog.close()));host.append(dialog);dialog.onclose=()=>dialog.remove();dialog.showModal();
     }
     function balanceSummary220(entries,title,byAccount=false,id="") {
-      const groups=ledger.aggregate220(entries,byAccount).filter(g=>dec(g.quantity)!==0n),block=card(el("h3",title));if(id)block.id=id;
+      const groups=ledger.aggregate221(entries,byAccount).filter(g=>dec(g.quantity)!==0n),block=card(el("h3",title));if(id)block.id=id;
       if(!groups.length){block.append(el("p",entries.length?"ماندهٔ این انتخاب تسویه است.":"گردشی برای این انتخاب ثبت نشده است.","n-muted"));return block;}
-      block.append(table([...(byAccount?["طرف حساب"]:[]),"مبنای مانده","عیار","مانده","واحد","وضعیت"],groups.map(g=>({item:g,cells:[...(byAccount?[name(g.bucket==="person"?"people":g.bucket==="expense"?"expenses":g.bucket==="income"?"incomes":"funds",g.account)]:[]),g.name,f(g.purity),amount219(g.quantity,g.unit,true),g.unit.name,ledger.label220(g.quantity,g.bucket)]})),g=>btn("جزئیات",()=>showBalance220(g))));
+      block.append(table([...(byAccount?["طرف حساب"]:[]),"مبنای مانده","عیار","مانده","واحد","وضعیت"],groups.map(g=>({item:g,cells:[...(byAccount?[name(g.bucket==="person"?"people":g.bucket==="expense"?"expenses":g.bucket==="income"?"incomes":"funds",g.account)]:[]),g.name,f(g.purity),amount219(g.quantity,g.unit,true),g.unit.name,ledger.label221(g.quantity,g.bucket)]}))));
       if(groups.some(g=>g.unclassified))block.append(el("p","داراییِ بدون جنس مشخص، برای جلوگیری از اختلاط طلا و نقره جدا نمایش داده می‌شود؛ جنس آن را در معرفی کالا تعیین کنید.","n-notice"));
       return block;
     }
@@ -2216,7 +2232,7 @@ globalThis.SadraNext = {
           ),
         );
       const entries=d.entries.map(e=>({...e,document:d.id,snapshot:d.snapshots?.[e.good]}));
-      dialog.append(table(["دفتر","حساب","کالا / دارایی","مبنای مانده","مقدار","واحد","تعداد","عیار","وضعیت","جزء"],entries.map(e=>{const normalized=ledger.describeEntry220(e);return {cells:[{stock:"موجودی",commitment:"تعهد",person:"حساب شخص",expense:"هزینه",income:"درآمد"}[e.bucket],accountName(e),d.snapshots[e.good]?.name || name("goods",e.good),normalized.name,amount219(normalized.quantity,normalized.unit,true),normalized.unit.name,normalized.count!==null?amount219(normalized.count):"—",f(normalized.purity),ledger.label220(normalized.quantity,e.bucket),e.component==="fee"?"کارمزد":"اصل"]};})));
+      dialog.append(table(["دفتر","حساب","کالا / دارایی","مبنای مانده","مقدار","واحد","تعداد","عیار","وضعیت","جزء"],entries.map(e=>{const normalized=ledger.view221(e);return {cells:[{stock:"موجودی",commitment:"تعهد",person:"حساب شخص",expense:"هزینه",income:"درآمد"}[e.bucket],accountName(e),d.snapshots[e.good]?.name || name("goods",e.good),normalized.name,amount219(normalized.quantity,normalized.unit,true),normalized.unit.name,normalized.count!==null?amount219(normalized.count):"—",f(normalized.purity),ledger.label221(normalized.quantity,e.bucket),e.component==="fee"?"کارمزد":"اصل"]};})));
       dialog.append(balanceSummary220(entries,"اثر این سند بر حساب‌ها",true));
       const affected=new Set(entries.map(e=>e.bucket+"|"+e.account));
       dialog.append(balanceSummary220(ledger.entries().filter(e=>affected.has(e.bucket+"|"+e.account)),"ماندهٔ نهایی حساب‌های این سند",true));
@@ -2380,26 +2396,15 @@ globalThis.SadraNext = {
       d.showModal();
     }
     function inventory() {
-      const controls=el("div",null,"n-grid");controls.id="inventory220-controls";
-      const addFilter=(key,title,items,blank)=>{const c=select(items,filter[key] || "",blank);c.id="inventory220-"+key;c.onchange=()=>{filter[key]=c.value;render();};controls.append(field(title,c));};
-      addFilter("kind","نوع موجودی",choices({currency:"ارز",count:"کالای تعدادی",weightCount:"کالای وزنی–تعدادی",weight:"کالای وزنی"}),"همهٔ موجودی‌ها");
-      addFilter("fund","بانک / حساب / صندوق",ledger.s.funds.map(f=>({id:f.id,name:f.name+(f.active===false?" (غیرفعال)":"")})),"همهٔ بانک‌ها و صندوق‌ها");
-      const physical=ledger.entries().filter(e=>e.bucket==="stock" && (!filter.fund || e.account===filter.fund));
-      const eligible=physical.filter(e=>{const value=ledger.describeEntry220(e);return !filter.kind || (filter.kind==="weightCount"?value.countedWeight:filter.kind==="weight"?value.kind==="weight" && !value.countedWeight:value.kind===filter.kind);});
-      const materials=[...new Set(eligible.map(e=>ledger.describeEntry220(e).material).filter(Boolean))];
-      addFilter("material","جنس دارایی",materials.map(id=>({id,name:id})),"همهٔ دارایی‌ها");
-      const purities=[...new Set(eligible.map(e=>ledger.describeEntry220(e).purity).filter(Boolean))];
-      addFilter("purity","عیار",purities.map(id=>({id,name:id})),"همهٔ عیارها");host.append(card(controls));
-      const entries=eligible.filter(e=>{const value=ledger.describeEntry220(e);return (!filter.material || value.material===filter.material) && (!filter.purity || value.purity===filter.purity);});
-      host.append(el("p","این گزارش فقط موجودی واقعی بانک‌ها و صندوق‌هاست؛ طلب، بدهی و تعهد کارمزد در موجودی وارد نمی‌شوند.","n-muted"));
-      for(const [kind,title]of [["count","موجودی کالاهای تعدادی"],["weight","موجودی وزنی به تفکیک دارایی و عیار"],["currency","موجودی ارزها"]]) {
-        const source=entries.filter(e=>ledger.describeEntry220(e).kind===kind);
-        if(!source.length)continue;
-        host.append(balanceSummary220(source,title,false,"inventory220-"+kind));
-        const details=ledger.aggregate220(source).flatMap(g=>g.details.filter(d=>dec(d.quantity)!==0n).map(d=>({cells:[g.name,d.name,name("funds",d.account),d.countedWeight?"وزنی–تعدادی":d.kind==="weight"?"وزنی":d.kind==="count"?"تعدادی":"ارزی",amount219(d.quantity,d.unit),d.unit.name,d.hasCount?amount219(d.count):"—",f(d.purity),d.lot || "—",[d.mark,d.assay].filter(Boolean).join(" / ") || "—"]})));
-        host.append(card(el("h4","جزئیات "+title),table(["دسته دارایی","نام کالا / ارز","بانک / حساب / صندوق","نوع کالا","موجودی واقعی","واحد","تعداد","عیار","محموله","نشان / انگ"],details)));
-      }
-      if(!entries.length)host.append(el("p","موجودی برای این انتخاب ثبت نشده است.","n-notice"));
+      const control=select(ledger.s.funds.map(f=>({id:f.id,name:f.name})),filter.fund || "","همهٔ بانک‌ها و صندوق‌ها");control.onchange=()=>{filter.fund=control.value;render();};host.append(card(field("بانک / صندوق",control)));
+      const entries=ledger.entries().filter(e=>e.bucket==="stock" && (!filter.fund || e.account===filter.fund)),map=new Map();
+      for(const e of entries){const v=ledger.view221(e,true),key=[e.account,e.good,e.purity || "",e.lot || ""].join("|");let row=map.get(key);if(!row){row={key,account:e.account,good:e.good,quantity:"0",count:"0",hasCount:false,unit:v.unit,name:v.goodName,purity:v.actualPurity,mark:e.mark || "",assay:e.assay || "",lot:e.lot || ""};map.set(key,row);}row.quantity=add(row.quantity,v.quantity);if(v.count!==null){row.count=add(row.count,v.count);row.hasCount=true;}}
+      const rows=[...map.values()].filter(r=>dec(r.quantity)!==0n);const listing=table(["نام کالا / ارز","بانک / صندوق","عیار واقعی","تعداد","وزن / موجودی","واحد","انگ","ری‌گیری"],rows.map(r=>({cells:[r.name,name("funds",r.account),f(r.purity),r.hasCount?amount219(r.count):"—",amount219(r.quantity,r.unit),r.unit.name,r.mark || "بدون انگ",r.assay || "—"]})));listing.id="inventory221-items";
+      [...listing.querySelectorAll("tbody tr")].forEach((tr,i)=>{tr.tabIndex=0;tr.onclick=()=>inventoryHistory221(rows[i]);tr.onkeydown=e=>{if(e.key==="Enter")inventoryHistory221(rows[i]);};});host.append(listing,el("p","برای مشاهدهٔ دریافت و پرداخت هر کالا روی ردیف آن کلیک کنید. خرید و فروش به‌تنهایی موجودی را تغییر نمی‌دهد.","n-muted"));
+    }
+    function inventoryHistory221(row) {
+      const dialog=el("dialog"),source=reportData(),entries=ledger.entries().filter(e=>e.bucket==="stock" && e.account===row.account && e.good===row.good && (e.purity || "")===row.purity && (e.lot || "")===row.lot);let balance="0";
+      dialog.append(el("h3","گردش "+row.name),table(["تاریخ","فاکتور","عملیات","طرف حساب","دریافت","پرداخت","مانده","واحد","انگ","ری‌گیری"],entries.map(e=>{const v=ledger.view221(e,true);balance=add(balance,v.quantity);return {cells:[date221(e.date),f(ledger.s.documents.find(d=>d.id===e.document)?.invoiceNumber || ledger.s.documents.find(d=>d.id===e.document)?.number),types[e.type] || e.type,route221(e,source).party,dec(v.quantity)>0n?amount219(v.quantity,v.unit):"—",dec(v.quantity)<0n?amount219(sub("0",v.quantity),v.unit):"—",amount219(balance,v.unit),v.unit.name,e.mark || "—",e.assay || "—"]};})),btn("بستن",()=>dialog.close()));host.append(dialog);dialog.onclose=()=>dialog.remove();dialog.showModal();
     }
     function accounts() {
       const group = select(
@@ -2628,6 +2633,17 @@ globalThis.SadraNext = {
       dialog.onclose = () => dialog.remove();
       dialog.showModal();
     }
+    function route221(entry,source) {
+      const doc=source.docs.get(entry.document),header=ledger.s.invoiceHeaders214?.find(h=>h.id===doc?.invoiceHeader),row=header?.rows?.find(r=>r.id===doc?.invoiceRow);
+      if(row){const kind=row.partyKind==="banks"?"funds":row.partyKind,party=row.partyKind==="installments"?ledger.s.installmentContracts214?.find(c=>c.id===row.contractId)?.title:name(kind,row.partyId);return {from:row.operation==="receive"?name(header.partyKind==="banks"?"funds":header.partyKind,header.partyId):party,to:row.operation==="receive"?party:name(header.partyKind==="banks"?"funds":header.partyKind,header.partyId),party};}
+      const peers=doc?.entries?.filter(e=>e.account!==entry.account) || [];return {from:entry.quantity[0]==="-"?accountName(entry):peers.map(accountName).join("، "),to:entry.quantity[0]==="-"?peers.map(accountName).join("، "):accountName(entry),party:peers.map(accountName).join("، ")};
+    }
+    function openReport221(e,source) {
+      const d=source.docs.get(e.document);if(d?.invoiceHeader){go("operations");forms214.open221(d.invoiceHeader);return;}
+      if(d?.archive && d.original){document.body.classList.remove("next204-active");host.hidden=true;bridge.openInvoice?.(d.original.no);return;}
+      showDocument(e.document,{readOnly:true});
+    }
+    function date221(value){if(!value)return "—";const parts=persianFormatter.formatToParts(new Date(value+"T12:00:00Z"));return f(["year","month","day"].map(k=>parts.find(p=>p.type===k).value).join("/"));}
     function reports() {
       const controls=el("div",null,"n-grid");controls.id="report218-controls";
       function dropdown(key,title,items,blank="همه",reset=[]) {
@@ -2671,14 +2687,15 @@ globalThis.SadraNext = {
         const bucket={people:"person",expenses:"expense",incomes:"income"}[kind];if(e.bucket!==bucket || (filter.partyId && e.account!==filter.partyId))return false;
         const entity=ledger.s[kind].find(x=>x.id===e.account) || e.accountSnapshot;return !filter.groupId || entity?.groupId===filter.groupId;
       }).sort((a,b)=>(a.date || "").localeCompare(b.date || "") || String(a.at).localeCompare(String(b.at)));
-      latestHeaders=["تاریخ","شماره فاکتور","عملیات","طرف حساب","کالا / ارز سطر","مبنای مانده","عیار","مقدار","واحد","تعداد","مانده","وضعیت مانده","توضیحات"];
+      latestHeaders=["تاریخ","شماره فاکتور","عملیات","طرف حساب","طرف سطر فاکتور","از کجا","به کجا","کالا / ارز سطر","مبنای مانده","عیار","مقدار","واحد","تعداد","مانده","وضعیت مانده","توضیحات"];
       const rows=entries.map(e=>{
-        const d=source.docs.get(e.document),value=ledger.describeEntry220(e),key=[e.bucket,e.account,value.key].join("|"),after=add(running.get(key) || "0",value.quantity);running.set(key,after);
-        return {item:e,cells:[e.originalDate || (e.date?persianFormatter.format(new Date(e.date+"T12:00:00Z")):"—"),String(d?.invoiceNumber || d?.number || ""),types[e.type] || e.type,accountName(e),value.goodName,value.name,f(value.purity),amount219(value.quantity,value.unit,true),value.unit.name,value.count!==null?amount219(value.count):"—",amount219(after,value.unit,true),ledger.label220(after,e.bucket),e.notes || ""]};
+        const d=source.docs.get(e.document),value=ledger.view221(e),key=[e.bucket,e.account,value.key].join("|"),after=add(running.get(key) || "0",value.quantity);running.set(key,after);
+        const route=route221(e,source);return {item:e,cells:[date221(e.date),f(d?.invoiceNumber || d?.number || ""),types[e.type] || e.type,accountName(e),route.party,route.from,route.to,value.goodName,value.name,f(value.purity),amount219(value.quantity,value.unit,true),value.unit.name,value.count!==null?amount219(value.count):"—",amount219(after,value.unit,true),ledger.label221(after,e.bucket),e.notes || ""]};
       });
-      latestRows=rows.map(r=>r.cells);host.append(balanceSummary220(entries,"مانده‌های نهایی به تفکیک دارایی و عیار",true,"report220-balances"),bar(btn("چاپ گزارش",printReport),el("span",f(rows.length)+" ردیف")));
-      const max=Math.max(0,Math.ceil(rows.length/50)-1);page=Math.min(page,max);
-      host.append(table(latestHeaders,rows.slice(page*50,(page+1)*50),e=>btn("نمایش سند",()=>{const d=source.docs.get(e.document);d?.archive?showArchive(d):showDocument(e.document);})),bar(btn("صفحه قبل",()=>{page=Math.max(0,page-1);render();}),el("span",f(page+1)+" / "+f(max+1)),btn("صفحه بعد",()=>{page=Math.min(max,page+1);render();})));
+      latestRows=rows.map(r=>r.cells);host.append(balanceSummary220(entries,kind==="people"?"ماندهٔ نهایی فرد":"مانده‌های نهایی به تفکیک دارایی و عیار",true,"report220-balances"),bar(btn("چاپ گزارش",printReport),el("span",f(rows.length)+" ردیف")));
+      const listing=table(latestHeaders,rows);listing.id="report221-rows";
+      [...listing.querySelectorAll("tbody tr")].forEach((tr,i)=>{tr.tabIndex=0;tr.ondblclick=()=>openReport221(rows[i].item,source);tr.onkeydown=e=>{if(e.key==="Enter")openReport221(rows[i].item,source);};});
+      const foot=el("tfoot");for(const g of ledger.aggregate221(entries,true)){const tr=el("tr");for(const [i,title]of latestHeaders.entries()){let text="";if(i===0)text="جمع / ماندهٔ نهایی";if(i===3)text=name(kind==="banks"?"funds":kind,g.account);if(i===8)text=g.name;if(i===9)text=f(g.purity);if(i===10)text=amount219(g.quantity,g.unit,true);if(i===11)text=g.unit.name;if(i===12 && g.hasCount)text=amount219(g.count,null,true);if(i===13)text=amount219(g.quantity,g.unit,true);if(i===14)text=ledger.label221(g.quantity,g.bucket);tr.append(el("td",text));}foot.append(tr);}listing.querySelector("table").append(foot);host.append(listing);
     }
     function printReport() {
       const w = window.open("", "_blank", "width=1200,height=850");
@@ -2986,6 +3003,7 @@ globalThis.SadraNext = {
       tags: "tags",
       units: "units",
       assets: "assets",
+      materials: "materials",
       invoice: "operations",
       reconcile: "inventory",
       reports: "reports",
@@ -3047,6 +3065,7 @@ globalThis.SadraNext = {
       screenButton212("goods", "goods", "معرفی کالاها"),
       screenButton212("units", "units", "معرفی واحدها"),
       screenButton212("assets", "assets", "معرفی ارزها"),
+      screenButton212("materials", "materials", "معرفی جنس دارایی‌ها"),
       screenButton212("tags", "tags", "معرفی برچسب‌ها"),
     ]);
     populate212(information212, "اطلاعات", [
@@ -3098,9 +3117,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۰";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۱";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۰";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۱";
     });
     const api = {
       escape218(){
