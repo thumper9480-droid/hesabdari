@@ -483,3 +483,11 @@ input[data-numeric217=true],input[data-unit219]{direction:ltr;text-align:right}
 #next204 #goods223-list button{padding:4px 7px;font-size:13px}
 aside button:focus-visible,aside summary:focus-visible{outline:3px solid #ffe08a;outline-offset:-3px;background:#236b52!important;color:white!important}
 #next204 #report223-content bdi{unicode-bidi:isolate;direction:ltr}
+
+/* Update 224: inventory sections and readable historical comparisons. */
+#next204 .event224-dialog{width:min(1100px,94vw);max-width:94vw}
+#next204 .event224-changed td:nth-child(n+2){background:#fff1c7;font-weight:700}
+#next204 #inventory224-content .n-card{margin-block:12px}
+#next204 #inventory224-content tbody tr{cursor:pointer}
+#next204 #inventory224-totals{border:2px solid #26834a;background:#f1faf4}
+#next204 #report218-controls select:focus-visible{outline:3px solid #208d6a;outline-offset:2px}
