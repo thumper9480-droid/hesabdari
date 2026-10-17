@@ -10,11 +10,12 @@ globalThis.SadraReport223=(()=>{
     const copy=root.cloneNode(true),originals=[root,...root.querySelectorAll('*')],copies=[copy,...copy.querySelectorAll('*')];
     const props=['color','background-color','font-size','font-family','font-weight','line-height','text-align','direction','unicode-bidi','padding','border-top','border-right','border-bottom','border-left','border-radius','border-collapse','display','flex-direction','flex-wrap','gap','align-items','justify-content'];
     originals.forEach((node,i)=>{const s=getComputedStyle(node);props.forEach(k=>copies[i].style.setProperty(k,s.getPropertyValue(k)));});
-    copy.removeAttribute('id');copy.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));
+    copy.removeAttribute('id');copy.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));copy.querySelectorAll('select,button,input').forEach(n=>n.remove());
+    const cellText228=node=>{const clean=node.cloneNode(true);clean.querySelectorAll('select,button,input').forEach(n=>n.remove());return clean.textContent;};
     const columns=Math.max(1,...[...root.querySelectorAll('table tr')].map(r=>[...r.cells].reduce((n,c)=>n+c.colSpan,0))),rows=[];
     const add=(text,node,span=columns)=>rows.push([{text,span,style:appearance(node)}]);
     function visit(node){
-      if(node.matches('table')){for(const r of node.rows)rows.push([...r.cells].map(c=>({text:c.textContent,span:c.colSpan,style:appearance(c)})));return;}
+      if(node.matches('table')){for(const r of node.rows)rows.push([...r.cells].map(c=>({text:cellText228(c),span:c.colSpan,style:appearance(c)})));return;}
       if(node.matches('.invoice219-balance-cards')){
         const cards=[...node.children];for(let start=0;start<cards.length;start+=3){const chunk=cards.slice(start,start+3),span=Math.max(1,Math.floor(columns/chunk.length));
           for(const selector of ['.invoice222-asset','.invoice222-quantity','.invoice219-credit,.invoice219-debit'])rows.push(chunk.map((c,i)=>{const item=c.querySelector(selector) || c;return {text:item.innerText,span:i===chunk.length-1?columns-span*i:span,style:appearance(item.querySelector(".invoice219-amount") || item)};}));
