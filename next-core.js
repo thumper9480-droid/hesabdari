@@ -705,6 +705,16 @@
       for(const e of entries){const v=this.view221(e,inventory),key=[e.bucket,...(byAccount?[e.account]:[]),v.key].join("|");let g=groups.get(key);if(!g){g={...clone(v),key,bucket:e.bucket,account:byAccount?e.account:null,quantity:"0",count:"0",hasCount:false,details:[]};groups.set(key,g);}g.quantity=add(g.quantity,v.quantity);if(v.count!==null){g.count=add(g.count,v.count);g.hasCount=true;}const k=[e.account,e.good,e.purity || "",e.lot || "",e.component || ""].join("|");let d=g.details.find(d=>d.key===k);if(!d){d={key:k,account:e.account,good:e.good,name:v.goodName,quantity:"0",actualQuantity:"0",count:"0",hasCount:false,purity:v.actualPurity,unit:clone(v.unit),kind:v.kind,countedWeight:v.countedWeight,lot:e.lot || "",component:e.component || "",mark:e.mark || "",assay:e.assay || "",documents:[]};g.details.push(d);}d.quantity=add(d.quantity,v.quantity);d.actualQuantity=add(d.actualQuantity,v.actualQuantity);if(v.count!==null){d.count=add(d.count,v.count);d.hasCount=true;}if(e.document && !d.documents.includes(e.document))d.documents.push(e.document);}
       return [...groups.values()];
     }
+    reportRows223(entries) {
+      const running=new Map(),money=new Map(),gold=new Map();
+      return [...entries].sort((a,b)=>(a.date || "").localeCompare(b.date || "") || String(a.at || "").localeCompare(String(b.at || ""))).map(entry=>{
+        const view=this.view221(entry),account=[entry.bucket,entry.account].join("|"),key=account+"|"+view.key;
+        const balance=add(running.get(key) || "0",view.quantity);running.set(key,balance);
+        if(view.kind==="currency" && (view.unit.currencyCode==="IRT" || norm(view.unit.name)==="تومان"))money.set(account,add(money.get(account) || "0",view.quantity));
+        if(view.kind==="weight" && norm(view.material)==="طلا" && view.purity==="750")gold.set(account,add(gold.get(account) || "0",view.quantity));
+        return {entry,view,balance,toman:money.get(account) || "0",gold750:gold.get(account) || "0",operation:["buy","sell"].includes(entry.type)?({buy:"خرید",sell:"فروش"}[entry.type]):dec(view.quantity)>0n?"+":dec(view.quantity)<0n?"−":"۰"};
+      });
+    }
     accountBalances221(kind,id,entries=this.entries()) {const buckets={people:["person"],expenses:["expense"],incomes:["income"],banks:["stock","commitment"],funds:["stock","commitment"]}[kind] || [];return this.aggregate221(entries.filter(e=>e.account===id && buckets.includes(e.bucket)),true);}
     label221(q,bucket="person") {if(bucket==="expense")return "هزینهٔ ثبت‌شده";if(bucket==="income")return "درآمد ثبت‌شده";if(dec(q)===0n)return "تسویه";if(bucket==="stock")return dec(q)>0n?"موجودی":"کسری موجودی";return dec(q)>0n?"طلبکار":"بدهکار";}
     describeEntry220(entry) {

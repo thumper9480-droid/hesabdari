@@ -1,13 +1,14 @@
 {
   "version": "5.9.1-browser",
-  "update": 222,
+  "update": 223,
   "date": "2026-10-17",
   "type": "browser",
-  "label": "مسیر از کجا به کجا، کارمزد عددی، مانده خوانا و حفظ آخرین گزارش",
+  "label": "گزارش تجمعی و برچسب، خروجی رنگی، معرفی کالا و پیمایش کیبورد",
   "entry": "index.html",
   "assets": [
     "next-core.js",
     "next-forms.js",
+    "next-report.js",
     "next-ui.js",
     "next-ui.css",
     "fonts/"
