@@ -245,6 +245,7 @@ globalThis.SadraForms214 = {
               r.pricing225=null;const g=goods.find(g=>g.id===r.good);r.unitId=g?.catalogUnitId || g?.unitId || "";r.amount="";r.count="";r.feeValue="";r.partyKind="";r.partyId="";r.contractId="";r.dueId="";
             });
             chosen=goods.find(g=>g.id===r.good);
+            if(chosen)chosen={...chosen,...(ledger().feePolicy227(r) || {})};
             if(chosen) {
               const mode=chosen.catalogMode || (chosen.standardWeight?"weightCount":chosen.mode),dimension=mode==="count"?"count":"weight";
               r.unitId ||= chosen.catalogUnitId || chosen.unitId || active("units").find(u=>u.dimension===dimension)?.id || "";
