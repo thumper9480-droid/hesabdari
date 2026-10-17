@@ -141,7 +141,15 @@
         record: id,
         before: clone(before ?? null),
         after: clone(after ?? null),
+        ...(["invoice-row-post","invoice-row-delete","invoice-delete","invoice-header-edit","invoice-header-update224"].includes(action) && !(action==="invoice-row-post" && !before)?{context224:this.auditContext224(kind,id,before,after,action)}:{}),
       });
+    }
+    auditContext224(kind,id,before,after,action){
+      const h=kind==="invoiceHeaders214"?this.s.invoiceHeaders214?.find(h=>h.id===id):null;if(!h)return null;
+      const label=(kind,id)=>this.s[["banks","funds"].includes(kind)?"funds":kind]?.find(x=>x.id===id)?.name || id || "";
+      const rowEvent=action?.startsWith("invoice-row-"),related=[...(rowEvent?[]:h.rows || []),...(before?.rows || []),...(after?.rows || []),...(before?.operation?[before]:[]),...(after?.operation?[after]:[])];
+      const records={};for(const k of ["goods","units","assets","funds","people","expenses","incomes","tags","groups"])records[k]=(this.s[k] || []).filter(x=>related.some(r=>[r.good,r.unitId,r.assetId,r.partyId,r.goodsGroup,...(r.tags || [])].includes(x.id)) || [h.partyId,before?.partyId,after?.partyId].includes(x.id)).map(x=>({id:x.id,name:x.name}));
+      return {number:h.number,jalali:h.jalali,partyKind:h.partyKind,partyId:h.partyId,partyName:label(h.partyKind,h.partyId),rows:clone(rowEvent?[after || before].filter(Boolean):h.rows || []),records};
     }
     used(kind, id) {
       if ((this.s.installmentContracts214 || []).some(c => c.partyId === id || c.bankId === id || c.groupId === id || c.goodsGroup === id || c.good === id || c.tags?.includes(id)) ||
@@ -704,6 +712,11 @@
       const groups=new Map();
       for(const e of entries){const v=this.view221(e,inventory),key=[e.bucket,...(byAccount?[e.account]:[]),v.key].join("|");let g=groups.get(key);if(!g){g={...clone(v),key,bucket:e.bucket,account:byAccount?e.account:null,quantity:"0",count:"0",hasCount:false,details:[]};groups.set(key,g);}g.quantity=add(g.quantity,v.quantity);if(v.count!==null){g.count=add(g.count,v.count);g.hasCount=true;}const k=[e.account,e.good,e.purity || "",e.lot || "",e.component || ""].join("|");let d=g.details.find(d=>d.key===k);if(!d){d={key:k,account:e.account,good:e.good,name:v.goodName,quantity:"0",actualQuantity:"0",count:"0",hasCount:false,purity:v.actualPurity,unit:clone(v.unit),kind:v.kind,countedWeight:v.countedWeight,lot:e.lot || "",component:e.component || "",mark:e.mark || "",assay:e.assay || "",documents:[]};g.details.push(d);}d.quantity=add(d.quantity,v.quantity);d.actualQuantity=add(d.actualQuantity,v.actualQuantity);if(v.count!==null){d.count=add(d.count,v.count);d.hasCount=true;}if(e.document && !d.documents.includes(e.document))d.documents.push(e.document);}
       return [...groups.values()];
+    }
+    inventory224(entries=this.entries()){
+      const map=new Map();
+      for(const e of entries.filter(e=>e.bucket==="stock")){const v=this.view221(e,true),key=[e.account,e.good,e.purity || "",e.lot || ""].join("|");let row=map.get(key);if(!row){row={key,account:e.account,good:e.good,kind:v.kind,material:v.material,name:v.kind==="currency"?v.name:v.goodName,purity:v.actualPurity,rawPurity:e.purity || "",unit:clone(v.unit),quantity:"0",count:"0",hasCount:false,mark:e.mark || "",assay:e.assay || "",lot:e.lot || "",assetKey:v.key};map.set(key,row);}row.quantity=add(row.quantity,v.quantity);if(v.count!==null){row.count=add(row.count,v.count);row.hasCount=true;}}
+      return [...map.values()].filter(r=>dec(r.quantity)!==0n).map(r=>({...r,equivalent750:r.kind==="weight" && norm(r.material)==="طلا" && r.purity?this.equivalent(r.quantity,r.purity,"750"):null}));
     }
     reportRows223(entries) {
       const running=new Map(),money=new Map(),gold=new Map();
@@ -1367,9 +1380,10 @@
     deleteInvoice217(headerId) {
       return this.transaction(()=>{
         const h=this.find("invoiceHeaders214",headerId);if(h.status==="deleted")throw Error("فاکتور قبلاً حذف شده است");
+        const before=clone(h);
         this.reverseInvoiceDocuments217(h,"حذف فاکتور "+h.number);
         h.status="deleted";h.deletedAt=new Date().toISOString();delete h.originalDocumentIds;
-        this.audit("invoice-delete","invoiceHeaders214",h.id,null,{number:h.number});return clone(h);
+        this.audit("invoice-delete","invoiceHeaders214",h.id,before,clone(h));return clone(h);
       });
     }
     currencyGood216(assetId) {
@@ -1424,9 +1438,12 @@
     validateInvoiceLine216(header,line) {
       if(["buy","sell"].includes(line.operation)) {
         if(header.partyKind!=="people")throw Error("طرف خرید و فروش باید فرد باشد");
-        const commodity=this.commodityValues217(line),asset=this.find("assets",commodity.good.assetId,true),money=this.find("assets",line.moneyAssetId,true);
-        if(money.nature!=="currency" || this.find("units",money.unitId).currencyCode==="IRR")throw Error("ارز مبلغ معامله معتبر نیست");pos(line.rate);
-        const tags=[...new Set(line.tags || [])];tags.forEach(id=>this.find("tags",id,true));return {asset,amount:commodity.quantity,tags,commodity,trade:true};
+        if(!["commodity","currency"].includes(line.receiptKind))throw Error("نوع معامله را انتخاب کنید");
+        const commodity=line.receiptKind==="commodity"?this.commodityValues217(line):null,asset=this.find("assets",commodity?commodity.good.assetId:line.assetId,true);
+        if(!commodity && (asset.nature!=="currency" || this.find("units",asset.unitId).dimension!=="currency"))throw Error("ارز معامله معتبر نیست");
+        const toman=this.s.assets.find(a=>a.active!==false && a.nature==="currency" && this.find("units",a.unitId).currencyCode==="IRT"),money=this.find("assets",line.moneyAssetId || toman?.id,true);
+        if(money.nature!=="currency" || this.find("units",money.unitId).currencyCode!=="IRT")throw Error("مبلغ معامله باید تومانی باشد");pos(line.rate);
+        const amount=commodity?commodity.quantity:this.precision(pos(line.amount),asset.unitId),tags=[...new Set(line.tags || [])];tags.forEach(id=>this.find("tags",id,true));return {asset,amount,tags,commodity,money,trade:true};
       }
       if(!["receive","pay"].includes(line.operation) || !["currency","commodity"].includes(line.receiptKind))throw Error("نوع دریافت یا پرداخت را مشخص کنید");
       const commodity=line.receiptKind==="commodity"?this.commodityValues217(line):null;
@@ -1437,7 +1454,7 @@
         this.validateInstallmentLine216(header,line,asset.id,amount);
       } else {
         this.validateParty214(line);
-        if(header.partyKind===line.partyKind && header.partyId===line.partyId)throw Error("طرف سربرگ و طرف سطر باید متفاوت باشند");
+        if(header.partyId===line.partyId && (header.partyKind===line.partyKind || [header.partyKind,line.partyKind].every(k=>["banks","funds"].includes(k))))throw Error("طرف سربرگ و طرف سطر باید متفاوت باشند");
         for(const party of [header,line])if(["banks","funds"].includes(party.partyKind))this.assertFund(party.partyId,{assetId:asset.id});
       }
       const tags=[...new Set(line.tags || [])];tags.forEach(id=>this.find("tags",id,true));
@@ -1453,7 +1470,7 @@
         const old=input.id?header.rows.find(r=>r.id===input.id):null;
         if(input.id && !old)throw Error("سطر موردنظر یافت نشد");
         const row={id:old?.id || uid(),operation:input.operation,receiptKind:input.receiptKind,assetId:values.asset.id,assetName:values.commodity?.good.name || values.asset.name,
-          purity:values.commodity?.purity || "",lot:input.lot || "",mark:input.mark || "",assay:input.assay || "",rate:input.rate || "",moneyAssetId:input.moneyAssetId || "",
+          purity:values.commodity?.purity || "",lot:input.lot || "",mark:input.mark || "",assay:input.assay || "",rate:input.rate || "",moneyAssetId:values.money?.id || input.moneyAssetId || "",
           good:values.commodity?.good.id || "",goodsGroup:input.goodsGroup || "",unitId:values.commodity?.unitId || values.asset.unitId,
           count:values.commodity?.count || "",feeValue:input.feeValue || "",displayAmount:values.commodity?.displayAmount || values.amount,
           partyKind:input.partyKind,partyId:input.partyId,bankId:input.bankId || "",groupId:input.groupId || "",contractId:input.contractId || "",dueId:input.dueId || "",
@@ -1491,7 +1508,7 @@
           let doc;
           if(values.trade) {
             const money=this.currencyGood216(row.moneyAssetId),base=this.round(mul(this.convert(values.amount,good.unitId,good.rateUnitId || good.unitId),pos(row.rate)),money.unitId),sign=row.operation==="buy"?1n:-1n;
-            doc=this.append({type:row.operation,token:header.id+":"+header.postingToken+":"+row.id,date,lineTags:row.tags,notes:row.notes},[{bucket:"person",account:header.partyId,good:good.id,quantity:str(dec(values.amount)*sign),purity:c.purity || good.purity || "",component:"goods"},{bucket:"person",account:header.partyId,good:money.id,quantity:str(-dec(base)*sign),component:"money"}],{good:good.id,person:header.partyId,moneyGood:money.id,quantity:values.amount,count:c.count,rate:pos(row.rate),baseAmount:base,physical:false});
+            doc=this.append({type:row.operation,token:header.id+":"+header.postingToken+":"+row.id,date,lineTags:row.tags,notes:row.notes},[{bucket:"person",account:header.partyId,good:good.id,quantity:str(dec(values.amount)*sign),purity:c?.purity || good.purity || "",component:"goods"},{bucket:"person",account:header.partyId,good:money.id,quantity:str(-dec(base)*sign),component:"money"}],{good:good.id,person:header.partyId,moneyGood:money.id,quantity:values.amount,count:c?.count || null,rate:pos(row.rate),baseAmount:base,physical:false});
           }
           else if(row.partyKind==="installments") doc=this.postInstallmentLine216(header,{...row,amount:values.amount},good,date);
           else {
@@ -1531,13 +1548,14 @@
         if(h.status!=="draft" && !unlocked)throw Error("ابتدا F3 را برای اصلاح فاکتور بزنید");
         const previousRows=clone(h.rows || []),old=input.id?previousRows.find(r=>r.id===input.id):null;
         if(input.id && !old)throw Error("سطر یافت نشد");
+        const beforeRow224=clone(old || null);
         // Reverse only the edited row, so unrelated rows never get posted twice.
         if(old?.documentId && !this.s.documents.some(d=>d.reversalOf===old.documentId))this.reverse(old.documentId,"اصلاح سطر فاکتور "+h.number,uid(),this.find("documents",old.documentId).date);
         h.status="draft";delete h.originalDocumentIds;h.rows=old?[old]:[];
         this.saveInvoiceLine216(h.id,input);this.postInvoice216(h.id,date);
         const saved=clone(h.rows[0]);h.rows=old?previousRows.map(r=>r.id===old.id?saved:r):[...previousRows,saved];
         h.documentIds=h.rows.map(r=>r.documentId).filter(Boolean);h.status="posted";
-        this.audit("invoice-row-post","invoiceHeaders214",h.id,old,saved);return clone(h);
+        this.audit("invoice-row-post","invoiceHeaders214",h.id,beforeRow224,saved);return clone(h);
       });
     }
     deleteInvoiceRow218(headerId,rowId,unlocked=false) {
@@ -1558,7 +1576,7 @@
         if(!changed)return clone(h);
         if(h.rows?.some(r=>r.documentId)) {
           if(!unlocked)throw Error("ابتدا F3 را بزنید");
-          this.beginInvoiceEdit217(h.id);this.saveInvoiceHeader214(input);return this.postInvoice216(h.id,date);
+          const before=clone(h);this.beginInvoiceEdit217(h.id);this.saveInvoiceHeader214(input);const result=this.postInvoice216(h.id,date);this.audit("invoice-header-update224","invoiceHeaders214",h.id,before,result);return result;
         }
         return this.saveInvoiceHeader214(input);
       });
