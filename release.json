@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 225,
+  "update": 226,
   "date": "2026-10-17",
   "type": "browser",
-  "label": "محاسبات مظنه و سکه، نرخ تاریخی، گزارش‌ها و اصلاح و تسویهٔ اقساط",
+  "label": "اصلاح Enter روی شمارهٔ فاکتور جدید",
   "entry": "index.html",
   "assets": [
     "next-core.js",
