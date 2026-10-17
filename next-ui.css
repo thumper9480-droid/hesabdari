@@ -491,3 +491,12 @@ aside button:focus-visible,aside summary:focus-visible{outline:3px solid #ffe08a
 #next204 #inventory224-content tbody tr{cursor:pointer}
 #next204 #inventory224-totals{border:2px solid #26834a;background:#f1faf4}
 #next204 #report218-controls select:focus-visible{outline:3px solid #208d6a;outline-offset:2px}
+/* Update 225: compact installment fields and monthly matrix. */
+#next204 .installment225-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:start}
+#next204 .installment225-grid .inst214-party{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;grid-column:span 2}
+#next204 .installment225-grid .inst214-party label{grid-column:auto!important}
+#next204 .installment225-months th{background:#105247;color:white;font-weight:bold}
+#next204 .installment225-months tbody tr:first-child{background:#dcefe6;font-weight:bold}
+aside button[aria-current=true]{outline:2px solid #8ce5bb;outline-offset:2px}
+dialog.installment225-editor{width:min(950px,94vw);max-height:90vh;overflow:auto}
+@media(max-width:600px){#next204 .installment225-grid .inst214-party{grid-column:auto}}
