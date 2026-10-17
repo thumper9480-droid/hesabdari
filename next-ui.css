@@ -424,3 +424,21 @@ aside > button[data-page="installments"], aside > button[data-page="backup"] { d
 @media(max-width:600px){#next204 .invoice218-balances-grid{grid-template-columns:1fr}}
 @media print{#next204 .invoice218-rowlist{max-height:none;overflow:visible}}
 @media print{body.next204-active.invoice217-printing>#app{display:none!important}}
+/* Update 219: all invoice rows are visible; balances follow the supplied order. */
+#next204 .invoice218-rowlist{max-height:none;min-height:0;overflow:visible}
+#next204 .invoice218-rowlist table{width:100%;min-width:0;table-layout:fixed}
+#next204 .invoice218-rowlist td,#next204 .invoice218-rowlist th{white-space:normal;overflow-wrap:anywhere;padding:7px 4px}
+#next204 .invoice218-rowlist .n-bar{gap:4px;flex-wrap:wrap}
+#next204 .invoice218-rowlist button{font-size:11px;padding:5px}
+#next204 .invoice218-rowlist tfoot{background:#e8f4ec;font-weight:700;border-top:2px solid #7eb699}
+#next204 .invoice219-balances{display:grid;gap:10px;margin-top:12px}
+#next204 .invoice219-balances>.n-card{margin:0;background:#eff8f2;border:1px solid #a3cfb6}
+#next204 .invoice219-balance-cards{display:flex;flex-wrap:wrap;gap:12px;align-items:stretch}
+#next204 .invoice219-balance-card{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fff;border:1px solid #c7e1d3;border-radius:10px;padding:13px;min-width:200px;box-shadow:0 1px 4px #17473212}
+#next204 .invoice219-balance-card small{width:100%;color:#52695e}
+#next204 .invoice219-amount{font-size:18px;direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+#next204 .invoice219-debit{background:#f9dbdf;color:#942c38;border-radius:20px;padding:4px 10px}
+#next204 .invoice219-credit{background:#ccebd6;color:#186643;border-radius:20px;padding:4px 10px}
+#next204 bdi{direction:ltr;unicode-bidi:isolate}
+input[data-numeric217=true],input[data-unit219]{direction:ltr;text-align:right}
+@media(max-width:650px){#next204 .invoice218-rowlist table{table-layout:auto}#next204 .invoice218-rowlist th,#next204 .invoice218-rowlist td{font-size:11px}#next204 .invoice219-balance-card{min-width:0;flex:1 1 100%}}

@@ -10,6 +10,7 @@
     norm = (s) =>
       String(s ?? "")
         .normalize("NFKC")
+        .replace(/[\u2066-\u2069]/g, "")
         .replace(/[۰-۹]/g, (c) => "۰۱۲۳۴۵۶۷۸۹".indexOf(c))
         .replace(/[٠-٩]/g, (c) => "٠١٢٣٤٥٦٧٨٩".indexOf(c))
         .replace(/ي/g, "ی")
@@ -21,7 +22,7 @@
     let s = String(v ?? "0")
       .replace(/[۰-۹]/g, (c) => "۰۱۲۳۴۵۶۷۸۹".indexOf(c))
       .replace(/[٠-٩]/g, (c) => "٠١٢٣٤٥٦٧٨٩".indexOf(c))
-      .replace(/[٬,\s]/g, "")
+      .replace(/[٬,\s\u2066-\u2069]/g, "")
       .replace(/٫/g, ".");
     if (!/^-?\d+(\.\d{1,8})?$/.test(s))
       throw Error("عدد معتبر با حداکثر ۸ رقم اعشار وارد کنید");
@@ -87,6 +88,19 @@
       audit: [],
       legacy: null,
     };
+  }
+  function formatNumber(value,{unit=null,plus=false,group=true,decimals=null,minDecimals=0,isolate=true}={}) {
+    if(value===undefined || value===null || value==="")return "—";
+    const raw=String(value).replace(/[\u2066-\u2069]/g,"").replace(/−/g,"-").replace(/^\+/,"");
+    let number=dec(raw);
+    const gram=unit && (typeof unit==="string"?norm(unit)===norm("گرم"):unit.dimension==="weight" && norm(unit.name)===norm("گرم"));
+    if(gram){decimals=3;minDecimals=3;group=false;}else if(unit?.dimension==="weight")group=false;
+    if(decimals!==null){const step=10n**BigInt(8-decimals);number=divRound(number,step)*step;}
+    const sign=number<0n?"-":plus && number>0n?"+":"";
+    let [whole,fraction=""]=str(number<0n?-number:number).split(".");
+    fraction=fraction.padEnd(minDecimals,"0");if(group)whole=whole.replace(/\B(?=(\d{3})+(?!\d))/g,",");
+    const text=(sign+whole+(fraction?"."+fraction:"")).replace(/\d/g,c=>"۰۱۲۳۴۵۶۷۸۹"[c]);
+    return isolate?"\u2066"+text+"\u2069":text;
   }
   class Ledger {
     constructor(state = fresh(), save = () => {}) {
@@ -1112,6 +1126,28 @@
       }
       return record;
     }
+    peekInvoiceNumber219(numberFloor=1) {
+      return Math.max(Number(numberFloor) || 1,Number(this.s.nextInvoiceNumber214) || 1,...(this.s.invoiceHeaders214 || []).map(h=>Number(h.number)+1),...this.s.documents.map(d=>Number(d.number)+1));
+    }
+    discardEmptyInvoice219(id) {
+      if(!id)return false;
+      const h=(this.s.invoiceHeaders214 || []).find(h=>h.id===id);
+      if(!h || h.rows?.length || h.documentIds?.length || this.s.documents.some(d=>d.invoiceHeader===id))return false;
+      return this.transaction(()=>{this.s.invoiceHeaders214=this.s.invoiceHeaders214.filter(h=>h.id!==id);this.audit("invoice-empty-discard","invoiceHeaders214",id,h,null);return true;});
+    }
+    postInvoiceRow219(header,input,date,unlocked=false) {
+      return this.transaction(()=>{
+        let h=header;
+        if(!h.id){const created=this.newInvoiceHeader214(h.number,h.jalali);h=this.saveInvoiceHeader214({...h,id:created.id});}
+        return this.postInvoiceRow218(h.id,input,date,unlocked);
+      });
+    }
+    catalogUnit219(record) {
+      const dimension=(record.catalogMode || record.mode)==="count"?"count":"weight";
+      const compatible=this.s.units.filter(u=>u.active!==false && u.dimension===dimension);
+      const chosen=[record.catalogUnitId,record.unitId].map(id=>compatible.find(u=>String(u.id)===String(id))).find(Boolean);
+      return chosen || compatible.find(u=>dimension==="count"?norm(u.name)===norm("عدد"):dec(u.factor || "0")===SCALE) || compatible[0];
+    }
     newInvoiceHeader214(numberFloor, jalali) {
       return this.transaction(() => {
         this.s.invoiceHeaders214 ||= [];
@@ -1141,8 +1177,9 @@
       if(!draft)return this.find("goods",id,true);
       if(draft.active===false)throw Error("کالا غیرفعال است");
       const mode=draft.catalogMode==="count"?"count":"weight";
-      const u=this.find("units",draft.catalogUnitId || old?.unitId || this.s.units.find(u=>u.active!==false && u.dimension===mode && (mode==="count"?u.decimals===0:dec(u.factor || "0")===SCALE))?.id,true);
-      const rate=this.find("units",draft.catalogRateUnitId || old?.rateUnitId || u.id,true);
+      const u=this.find("units",this.catalogUnit219({...old,...draft})?.id,true);
+      const rateId=[draft.catalogRateUnitId,old?.rateUnitId].find(id=>this.s.units.some(rate=>rate.id===id && rate.active!==false && rate.dimension===mode && (mode==="weight" || rate.id===u.id)));
+      const rate=this.find("units",rateId || u.id,true);
       if(u.dimension!==mode || rate.dimension!==mode || (mode!=="weight" && u.id!==rate.id))throw Error("واحد مقدار و نرخ با نوع کالا سازگار نیست");
       let asset=old?this.find("assets",old.assetId):this.s.assets.find(a=>a.nature==="commodity" && a.unitId===u.id && norm(a.name)===norm(draft.name));
       if(!asset)asset=this.put("assets",{name:draft.name,nature:"commodity",unitId:u.id,decimals:u.decimals,active:true});
@@ -1742,5 +1779,5 @@
       });
     }
   }
-  return { Ledger, fresh, dec, str, add, sub, mul, div, pos, norm, uid, clone };
+  return { Ledger, fresh, dec, str, add, sub, mul, div, pos, norm, uid, clone, formatNumber };
 });
