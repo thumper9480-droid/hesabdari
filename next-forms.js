@@ -295,7 +295,7 @@ globalThis.SadraForms214 = {
       if(unlocked218 && rowOpen218)drawEditor();
       const rows=invoice.rows || [];
       if(rows.length) {
-        const wrap=card(el("h3","سطرهای فاکتور "+f(invoice.number))),listing=table(["سطر","عملیات","ارز / کالا","عیار واقعی","انگ","ری‌گیری","معادل ۷۵۰ (گرم)","طرف سطر","مقدار","واحد","تعداد","کارمزد","برچسب","توضیحات"],rows.map((r,i)=>({item:r,cells:rowCells218(r,i)})),r=>{
+        const wrap=card(el("h3","سطرهای فاکتور "+f(invoice.number))),listing=table(["سطر","عملیات","ارز / کالا","عیار واقعی","انگ","ری‌گیری","معادل ۷۵۰ (گرم)","از کجا","به کجا","مقدار","واحد","تعداد","کارمزد","برچسب","توضیحات"],rows.map((r,i)=>({item:r,cells:rowCells218(r,i)})),r=>{
           const edit=btn("ویرایش",()=>editRow218(r)),remove=btn("حذف",()=>{
             try{if(!unlocked218)throw Error("ابتدا F3 را بزنید");if(!confirm("این سطر و اثر مالی آن حذف شود؟"))return;
               invoice=ledger().deleteInvoiceRow218(invoice.id,r.id,true);selected218=Math.max(0,Math.min(selected218,invoice.rows.length-1));invoiceRow=freshInvoiceRow216();rowOpen218=false;invoiceFocus="invoice218-row-"+selected218;rerender();
@@ -322,9 +322,14 @@ globalThis.SadraForms214 = {
       return {amount:principal?str(dec(r.amount)*direction):r.signedAmount ?? str(dec(r.amount)*direction),count:r.count?str(dec(r.count)*direction):"",purity:r.purity ?? snapshot?.purity ?? "",unit:r.unitId?name("units",r.unitId):snapshot?.unit?.name || name("assets",r.assetId),fees};
     }
     function signed218(value,unit=null) {return amount219(value,unit,true);}
-    function feeText218(fees) {return fees.map(fee=>(fee.mode==="fixed"?"ثابت":fee.mode==="variable"?"متغیر":"کارمزد")+"؛ "+(fee.basis==="weightPercent"?f(fee.value)+"٪ از وزن":f(fee.value)+" تومان برای هر عدد")+"؛ جمع: "+signed218(fee.signedQuantity?str(-dec(fee.signedQuantity)):fee.quantity,fee.unitId || fee.unitName)+" "+fee.unitName).join(" | ") || "—";}
+    function feeText218(fees) {return fees.map(fee=>{
+      const detail=el("div",null,"invoice222-fee");
+      detail.append(el("span",fee.basis==="weightPercent"?"کارمزد: "+f(fee.value)+"٪ از وزن":"هر عدد: "+amount219(fee.value,"تومان")+" تومان"));
+      const effect=el("bdi",signed218(fee.signedQuantity?str(-dec(fee.signedQuantity)):fee.quantity,fee.unitId || fee.unitName));effect.dir="ltr";effect.className=dec(fee.signedQuantity?str(-dec(fee.signedQuantity)):fee.quantity)<0n?"invoice222-negative":"invoice222-positive";
+      const total=el("strong",null,"invoice222-fee-total");total.append(effect,el("span",fee.unitName));detail.append(total);return detail;
+    }).reduce((box,item)=>{box.append(item);return box;},el("div"));}
     function partyTitle218(row) {if(row.partyKind!=="installments")return name(["banks","funds"].includes(row.partyKind)?"funds":row.partyKind,row.partyId);const c=ledger().s.installmentContracts214?.find(c=>c.id===row.contractId),i=c?.dues.findIndex(d=>d.id===row.dueId);return c?c.title+" — قسط "+f(i+1):"اقساط";}
-    function rowCells218(r,i) {const meta=rowMetadata218(r);return [f(i+1),({receive:"دریافت",pay:"پرداخت",buy:"خرید",sell:"فروش"}[r.operation] || r.operation),r.assetName,f(meta.purity),r.mark || "—",r.assay || "—",r.receiptKind==="commodity" && ledger().s.goods.find(g=>g.id===r.good)?.mode==="weight" && meta.purity && norm(ledger().s.goods.find(g=>g.id===r.good)?.balanceMaterial220 || ledger().s.goods.find(g=>g.id===r.good)?.metal)==="طلا"?amount219(ledger().equivalent(ledger().convert(r.amount,r.unitId,ledger().s.units.find(u=>norm(u.name)==="گرم").id),meta.purity,"750"),"گرم"):"—",partyTitle218(r),signed218(meta.amount,r.unitId || meta.unit),meta.unit,signed218(meta.count),feeText218(meta.fees),(r.tags || []).map(id=>name("tags",id)).join("، "),r.notes];}
+    function rowCells218(r,i) {const meta=rowMetadata218(r);return [f(i+1),({receive:"دریافت",pay:"پرداخت",buy:"خرید",sell:"فروش"}[r.operation] || r.operation),r.assetName,f(meta.purity),r.mark || "—",r.assay || "—",r.receiptKind==="commodity" && ledger().s.goods.find(g=>g.id===r.good)?.mode==="weight" && meta.purity && norm(ledger().s.goods.find(g=>g.id===r.good)?.balanceMaterial220 || ledger().s.goods.find(g=>g.id===r.good)?.metal)==="طلا"?amount219(ledger().equivalent(ledger().convert(r.amount,r.unitId,ledger().s.units.find(u=>norm(u.name)==="گرم").id),meta.purity,"750"),"گرم"):"—",invoiceRoute222(r).from,invoiceRoute222(r).to,signed218(meta.amount,r.unitId || meta.unit),meta.unit,signed218(meta.count),feeText218(meta.fees),(r.tags || []).map(id=>name("tags",id)).join("، "),r.notes];}
     function invoiceAccount219() {
       const current=new Map(),effect=new Map(),meta=new Map(),all=ledger().entries();
       const ids=new Set((invoice.rows || []).map(r=>r.documentId).filter(id=>id && !ledger().s.documents.some(d=>d.reversalOf===id)));
@@ -334,8 +339,22 @@ globalThis.SadraForms214 = {
       const before=ledger().accountBalances221(invoice.partyKind,invoice.partyId,all.filter(e=>!ids.has(e.document)));
       return {current,effect,meta,groups,changes,before,keys:[...new Set([...current.keys(),...effect.keys()])]};
     }
+    function invoiceRoute222(row) {
+      const header=name(["banks","funds"].includes(invoice.partyKind)?"funds":invoice.partyKind,invoice.partyId),party=partyTitle218(row);
+      if(row.operation==="buy")return {from:header,to:"ما (تعهد خرید)"};
+      if(row.operation==="sell")return {from:"ما (تعهد فروش)",to:header};
+      return row.operation==="receive"?{from:header,to:party}:{from:party,to:header};
+    }
+    function renderRoute222() {
+      document.getElementById("invoice222-routes")?.remove();
+      const routes=[...new Map((invoice.rows || []).map(row=>{const r=invoiceRoute222(row);return [r.from+"|"+r.to,r];})).values()];
+      const box=el("div",null,"invoice222-routes");box.id="invoice222-routes";
+      routes.forEach(r=>{const line=el("div");line.append(el("span","از کجا: "),el("strong",r.from),el("span"," ← "),el("span","به کجا: "),el("strong",r.to));box.append(line);});
+      if(routes.length)document.querySelector(".invoice214-frame")?.append(box);
+    }
     function invoiceBalances218() {
       const panel=el("section",null,"invoice219-balances");panel.id="invoice218-balances";
+      renderRoute222();
       const data=invoiceAccount219(),party=name(["banks","funds"].includes(invoice.partyKind)?"funds":invoice.partyKind,invoice.partyId);
       for(const [id,title,values]of [
         ["invoice218-before","ماندهٔ قبل از فاکتور",new Map(data.keys.map(k=>[k,sub(data.current.get(k) || "0",data.effect.get(k) || "0")]))],
@@ -345,7 +364,9 @@ globalThis.SadraForms214 = {
         for(const key of data.keys) {
           const value=values.get(key) || "0";if(dec(value)===0n)continue;
           const meta=data.meta.get(key),item=el("div",null,"invoice219-balance-card"),number=el("bdi",signed218(value,meta.unit));number.dir="ltr";number.className="invoice219-amount";
-          item.append(el("strong",meta.name),number,el("span",meta.unit?.name || ""));
+          number.classList.add(dec(value)<0n?"invoice222-negative":"invoice222-positive");
+          const quantity=el("div",null,"invoice222-quantity");quantity.append(number,el("span",meta.unit?.name || "","invoice222-unit"));
+          item.append(el("strong",meta.name,"invoice222-asset"),quantity);
           if(meta.purity)item.append(el("small","عیار "+f(meta.purity)));
           if(meta.bucket==="commitment")item.append(el("small","تعهد؛ جدا از موجودی"));
           item.append(el("span",ledger().label221(value,meta.bucket),["expense","income"].includes(meta.bucket)?"invoice221-category":meta.bucket!=="stock" && dec(value)<0n?"invoice219-debit":"invoice219-credit"));
@@ -410,7 +431,8 @@ cards.append(item);
       document.getElementById("invoice217-print")?.remove();
       const sheet=el("section");sheet.id="invoice217-print";
       sheet.append(el("h2","حسابداری محمد صدرا — فاکتور "+f(invoice.number)),el("p","تاریخ: "+f(invoice.jalali)),el("p","طرف حساب: "+name(["banks","funds"].includes(invoice.partyKind)?"funds":invoice.partyKind,invoice.partyId)),el("p",invoice.status==="posted"?"ثبت‌شده":"پیش‌نویس"));
-      sheet.append(table(["ردیف","عملیات","کالا / ارز","عیار واقعی","انگ","ری‌گیری","معادل ۷۵۰ (گرم)","طرف سطر","مقدار","واحد","تعداد","کارمزد","برچسب","توضیحات"],(invoice.rows || []).map((r,i)=>({cells:rowCells218(r,i)}))));
+      for(const row of [...new Map((invoice.rows || []).map(r=>{const path=invoiceRoute222(r);return [path.from+"|"+path.to,path];})).values()])sheet.append(el("p","از کجا: "+row.from+" ← به کجا: "+row.to));
+      sheet.append(table(["ردیف","عملیات","کالا / ارز","عیار واقعی","انگ","ری‌گیری","معادل ۷۵۰ (گرم)","از کجا","به کجا","مقدار","واحد","تعداد","کارمزد","برچسب","توضیحات"],(invoice.rows || []).map((r,i)=>({cells:rowCells218(r,i)}))));
       const frame=document.createElement("iframe");frame.id="invoice221-printframe";frame.style.cssText="position:fixed;bottom:0;left:0;width:1px;height:1px;border:0";document.body.append(frame);
       const doc=frame.contentDocument;doc.open();doc.write('<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>چاپ فاکتور</title></head><body></body></html>');doc.close();
       const style=doc.createElement("style");style.textContent="body{font:12px Tahoma;direction:rtl;margin:15mm;color:#000;background:white}table{width:100%;border-collapse:collapse;table-layout:auto}th,td{border:1px solid #555;padding:5px;text-align:right;overflow-wrap:anywhere}thead{display:table-header-group}tr{break-inside:avoid}h2{font-size:18px}.n-scroll{overflow:visible}@page{size:A4 landscape;margin:10mm}";doc.head.append(style);const copy=doc.importNode(sheet,true);copy.removeAttribute("id");doc.body.append(copy);
