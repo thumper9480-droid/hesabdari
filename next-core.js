@@ -95,6 +95,7 @@
     const raw=String(value).replace(/[\u2066-\u2069]/g,"").replace(/−/g,"-").replace(/^\+/,"");
     let number=dec(raw);
     const gram=unit && (typeof unit==="string"?norm(unit)===norm("گرم"):unit.dimension==="weight" && norm(unit.name)===norm("گرم"));
+    if(unit && (typeof unit==="string"?norm(unit)==="تومان":unit.currencyCode==="IRT" || norm(unit.name)==="تومان")){decimals=0;minDecimals=0;group=true;}
     if(gram){decimals=3;minDecimals=3;group=false;}else if(unit?.dimension==="weight")group=false;
     if(decimals!==null){const step=10n**BigInt(8-decimals);number=divRound(number,step)*step;}
     const sign=number<0n?"-":plus && number>0n?"+":"";
@@ -567,8 +568,9 @@
       return div(mul(value, a.factor), b.factor);
     }
     precision(v, unit) {
+      const u=this.find("units",unit);if(u.currencyCode==="IRT")return this.round(v,unit);
       const n = dec(v),
-        d = this.find("units", unit).decimals;
+        d = u.decimals;
       if (n % 10n ** BigInt(8 - d) !== 0n)
         throw Error("مقدار بیش از دقت مجاز واحد اعشار دارد");
       return str(n);
@@ -611,7 +613,7 @@
       };
     }
     round(value, unit) {
-      const d = this.find("units", unit).decimals,
+      const u=this.find("units",unit),d = u.currencyCode==="IRT"?0:u.decimals,
         step = 10n ** BigInt(8 - d);
       return str(divRound(dec(value), step) * step);
     }
@@ -860,7 +862,7 @@
         e.lineTags = [...new Set([...(e.lineTags || []), ...requestedLineTags])];
         for (const tagId of e.lineTags) this.find("tags", tagId);
         const g = this.find("goods", e.good);
-        e.quantity = this.precision(e.quantity, g.unitId);
+        e.quantity = (["reversal","legacy"].includes(input.type) || input.preservePrecision228)?str(dec(e.quantity)):this.precision(e.quantity, g.unitId);
         snapshots[g.id] = {
           ...clone(g),
           unit: clone(this.find("units", g.unitId)),
@@ -1414,7 +1416,7 @@
           const asset=this.s.assets.find(a=>a.active!==false && a.nature==="currency" && this.find("units",a.unitId).currencyCode===(this.s.version221?"IRT":"IRR"));
           if(!asset)throw Error("ابتدا ارز تومان را معرفی کنید");
           const money=this.currencyGood216(asset.id);
-          fee={basis:"perPiece",value:str(dec(value)),quantity:this.precision(mul(count,value),money.unitId),good:money.id};
+          fee={basis:"perPiece",value:this.round(value,money.unitId),quantity:this.precision(mul(count,this.round(value,money.unitId)),money.unitId),good:money.id};
         }
       }
       let purity=g.purity || "";
@@ -1486,6 +1488,7 @@
         const original=this.find("documents",c.accountDocumentId).entries[0];
         entries.push({bucket:original.bucket,account:original.account,good:good.id,quantity:receiving?sub("0",row.amount):row.amount,purity:good.purity || "",accountSnapshot:clone(original.accountSnapshot)});
       }
+      if(!c.affectAccount)entries.push({bucket:"installmentControl",account:c.id,good:good.id,quantity:receiving?sub("0",row.amount):row.amount,purity:good.purity || ""});
       const doc=this.append({token:header.id+":"+(header.postingToken || "")+":"+row.id,type:receiving?"installmentReceive":"installmentPay",date,tags:[],lineTags:row.tags,notes:row.notes},entries,
         {related:c.accountDocumentId || undefined,contract:c.id,due:row.dueId,person:c.partyKind==="people"?c.partyId:"",good:good.id,quantity:row.amount,physical:true});
       this.s.installmentSettlements216 ||= [];
@@ -1501,13 +1504,13 @@
         if(!commodity && (asset.nature!=="currency" || this.find("units",asset.unitId).dimension!=="currency"))throw Error("ارز معامله معتبر نیست");
         const toman=this.s.assets.find(a=>a.active!==false && a.nature==="currency" && this.find("units",a.unitId).currencyCode==="IRT"),money=this.find("assets",line.moneyAssetId || toman?.id,true);
         if(money.nature!=="currency" || this.find("units",money.unitId).currencyCode!=="IRT")throw Error("مبلغ معامله باید تومانی باشد");pos(line.rate);
-        const amount=commodity?commodity.quantity:this.precision(pos(line.amount),asset.unitId),tags=[...new Set(line.tags || [])];tags.forEach(id=>this.find("tags",id,true));return {asset,amount,tags,commodity,money,trade:true};
+        const amount=commodity?commodity.quantity:this.precision(pos(line.amount),asset.unitId);if(dec(amount)<=0n)throw Error("مقدار پس از گرد کردن باید مثبت باشد");const tags=[...new Set(line.tags || [])];tags.forEach(id=>this.find("tags",id,true));return {asset,amount,tags,commodity,money,trade:true};
       }
       if(!["receive","pay"].includes(line.operation) || !["currency","commodity"].includes(line.receiptKind))throw Error("نوع دریافت یا پرداخت را مشخص کنید");
       const commodity=line.receiptKind==="commodity"?this.commodityValues217(line):null;
       const asset=this.find("assets",commodity?commodity.good.assetId:line.assetId,true),unit=this.find("units",asset.unitId,true);
       if(!commodity && (asset.nature!=="currency" || unit.dimension!=="currency"))throw Error("نوع ارز را انتخاب کنید");
-      const amount=commodity?commodity.quantity:this.precision(pos(line.amount),asset.unitId);
+      const amount=commodity?commodity.quantity:this.precision(pos(line.amount),asset.unitId);if(dec(amount)<=0n)throw Error("مقدار پس از گرد کردن باید مثبت باشد");
       if(line.partyKind==="installments") {
         this.validateInstallmentLine216(header,line,asset.id,amount);
       } else {
@@ -1528,7 +1531,7 @@
         const old=input.id?header.rows.find(r=>r.id===input.id):null;
         if(input.id && !old)throw Error("سطر موردنظر یافت نشد");
         const row={id:old?.id || uid(),operation:input.operation,receiptKind:input.receiptKind,assetId:values.asset.id,assetName:values.commodity?.good.name || values.asset.name,
-          purity:values.commodity?.purity || "",lot:input.lot || "",mark:input.mark || "",assay:input.assay || "",rate:input.rate || "",moneyAssetId:values.money?.id || input.moneyAssetId || "",
+          purity:values.commodity?.purity || "",lot:input.lot || "",mark:input.mark || "",assay:input.assay || "",rate:values.trade?this.round(pos(input.rate),values.money.unitId):input.rate || "",moneyAssetId:values.money?.id || input.moneyAssetId || "",
           good:values.commodity?.good.id || "",goodsGroup:input.goodsGroup || "",unitId:values.commodity?.unitId || values.asset.unitId,
           feePolicy227:values.commodity?.feePolicy227 || null,
           count:values.commodity?.count || "",feeValue:input.feeValue || "",displayAmount:values.commodity?.displayAmount || values.amount,
@@ -1581,7 +1584,7 @@
             const kind=party.partyKind,bucket={people:"person",expenses:"expense",incomes:"income",banks:"commitment",funds:"commitment"}[kind];
             const baseEntry=saved.entries.find(e=>e.account===party.partyId && e.component!=="fee"),sign=values.trade?(row.operation==="buy"?-1n:1n):baseEntry?(dec(baseEntry.quantity)<0n?-1n:1n):(row.operation==="receive"?-1n:1n);
             const entry={bucket,account:party.partyId,good:c.fee.good,quantity:str(dec(c.fee.quantity)*sign),component:"fee",purity:c.fee.basis==="weightPercent"?c.purity || good.purity || "":"",lineTags:clone(row.tags),accountSnapshot:clone(this.find(["banks","funds"].includes(kind)?"funds":kind,party.partyId))};
-            saved.entries.push(entry);const fg=this.find("goods",c.fee.good);saved.snapshots[fg.id]={...clone(fg),unit:clone(this.find("units",fg.unitId)),asset:clone(this.find("assets",fg.assetId))};
+            saved.entries.push(entry);if(row.partyKind==="installments")saved.entries.push({bucket:"installmentControl",account:"fee:"+row.contractId,good:entry.good,quantity:sub("0",entry.quantity),component:"fee",purity:entry.purity});const fg=this.find("goods",c.fee.good);saved.snapshots[fg.id]={...clone(fg),unit:clone(this.find("units",fg.unitId)),asset:clone(this.find("assets",fg.assetId))};
             saved.fees=[clone(c.fee)];
           }
           if(c){saved.quantity=values.amount;saved.count=c.count;saved.displayUnitId=c.unitId;saved.displayAmount=c.displayAmount;}
@@ -1608,6 +1611,7 @@
         if(h.status!=="draft" && !unlocked)throw Error("ابتدا F3 را برای اصلاح فاکتور بزنید");
         const previousRows=clone(h.rows || []),old=input.id?previousRows.find(r=>r.id===input.id):null;
         if(input.id && !old)throw Error("سطر یافت نشد");
+        if(old?.settlementReturned228)throw Error("این پرداخت برگشت خورده است؛ سطر تازه ثبت کنید");
         const beforeRow224=clone(old || null);
         // Reverse only the edited row, so unrelated rows never get posted twice.
         if(old?.documentId && !this.s.documents.some(d=>d.reversalOf===old.documentId))this.reverse(old.documentId,"اصلاح سطر فاکتور "+h.number,uid(),this.find("documents",old.documentId).date);
@@ -1654,7 +1658,7 @@
           if (input.goodsGroup !== "__ungrouped") this.find("groups", input.goodsGroup, true);
           if (input.goodsGroup === "__ungrouped" ? !!g.groupId : (g.groupId !== input.goodsGroup && g.subgroupId !== input.goodsGroup)) throw Error("کالا متعلق به گروه انتخاب‌شده نیست");
         }
-        const amount = this.precision(pos(input.amount), g.unitId);
+        const amount = this.precision(pos(input.amount), g.unitId);if(dec(amount)<=0n)throw Error("مقدار قسط پس از گرد کردن باید مثبت باشد");
         if (g.mode === "count" && dec(amount) % SCALE !== 0n) throw Error("تعداد هر قسط باید صحیح باشد");
         const count = Number(norm(input.count).replace(/[,٬]/g,""));
         if (!Number.isInteger(count) || count < 1 || count > 600) throw Error("تعداد اقساط باید بین ۱ تا ۶۰۰ باشد");
@@ -1675,13 +1679,18 @@
           const bucket = {people:"person",expenses:"expense",incomes:"income",banks:"commitment",funds:"commitment"}[input.partyKind];
           const quantity = input.direction === "payable" ? sub("0",total) : total;
           c.accountDocumentId = this.append({token:input.token,type:"installmentOpen",date:input.date,tags,notes:"قرارداد اقساط: " + c.title},
-            [{bucket,account:input.partyId,good:g.id,quantity,purity:g.purity || ""}],
+            [{bucket,account:input.partyId,good:g.id,quantity,purity:g.purity || ""},{bucket:"installmentControl",account:"opening:"+c.id,good:g.id,quantity:sub("0",quantity),purity:g.purity || ""}],
             {contract:c.id,partyKind:input.partyKind,partyId:input.partyId,person:input.partyKind === "people" ? input.partyId : "",good:g.id,physical:false}).id;
         }
+        if(!input.affectAccount){const quantity=input.direction==="payable"?sub("0",total):total;c.controlDocumentId=this.append({token:input.token,type:"installmentOpen",date:input.date,tags,notes:"ثبت قرارداد اقساط: "+c.title},[{bucket:"installmentControl",account:c.id,good:g.id,quantity,purity:g.purity || ""},{bucket:"installmentControl",account:"opening:"+c.id,good:g.id,quantity:sub("0",quantity),purity:g.purity || ""}],{contract:c.id,physical:false}).id;}
         this.s.installmentContracts214 ||= []; this.s.installmentContracts214.push(c);
         this.audit("installment-create", "installmentContracts214", c.id, null, c);
         return clone(c);
       });
+    }
+    installmentEntries228(c,good,quantity){
+      const bucket=c.affectAccount?{people:"person",expenses:"expense",incomes:"income",banks:"commitment",funds:"commitment"}[c.partyKind]:"installmentControl";
+      return [{bucket,account:c.affectAccount?c.partyId:c.id,good:good.id,quantity,purity:good.purity || ""},{bucket:"installmentControl",account:"opening:"+c.id,good:good.id,quantity:sub("0",quantity),purity:good.purity || ""}];
     }
     updateInstallments225(id,input,date) {
       return this.transaction(()=>{
@@ -1696,7 +1705,7 @@
         const seen=new Set(),dues=input.dues.map(d=>{
           if(d.id && seen.has(d.id))throw Error("قسط تکراری است");if(d.id)seen.add(d.id);
           const old=d.id?c.dues.find(x=>x.id===d.id):{id:uid(),amount:"0"};if(!old)throw Error("قسط متعلق به قرارداد نیست");
-          const paid=d.id?sub(old.amount,this.installmentRemaining216(id,old.id)):"0",amount=this.precision(pos(d.amount),g.unitId);
+          const paid=d.id?sub(old.amount,this.installmentRemaining216(id,old.id)):"0",amount=d.id && target.good===c.good && dec(d.amount)===dec(old.amount)?old.amount:this.precision(pos(d.amount),g.unitId);if(dec(amount)<=0n)throw Error("مقدار قسط باید مثبت باشد");
           if(dec(amount)<dec(paid))throw Error("مبلغ قسط نمی‌تواند از پرداخت ثبت‌شده کمتر باشد");
           this.metadata({date:d.date});if(!/^1[0-9]{3}\/[0-9]{2}\/[0-9]{2}$/.test(d.jalali))throw Error("سررسید معتبر نیست");
           return {...clone(old),amount,date:d.date,jalali:d.jalali};
@@ -1706,12 +1715,51 @@
         const total=dues.reduce((q,d)=>add(q,d.amount),"0"),delta=sub(total,c.total);
         if(changed){
           for(const doc of [...this.s.documents].reverse())if(doc.contract===id && ["installmentOpen","installmentAdjust225"].includes(doc.type) && !this.s.documents.some(r=>r.reversalOf===doc.id))this.reverse(doc.id,"اصلاح مشخصات قرارداد",uid(),date);
-          c.accountDocumentId=null;
-          if(target.affectAccount){const bucket={people:"person",expenses:"expense",incomes:"income",banks:"commitment",funds:"commitment"}[target.partyKind];c.accountDocumentId=this.append({token:uid(),type:"installmentOpen",date,notes:"اصلاح قرارداد اقساط: "+input.title},[{bucket,account:target.partyId,good:g.id,quantity:target.direction==="payable"?sub("0",total):total,purity:g.purity || ""}],{contract:id,physical:false}).id;}
-        }else if(c.affectAccount && dec(delta)!==0n){const original=this.find("documents",c.accountDocumentId).entries[0];this.append({token:uid(),type:"installmentAdjust225",date,notes:"اصلاح قرارداد اقساط: "+input.title},[{...clone(original),quantity:c.direction==="payable"?sub("0",delta):delta}],{contract:id,physical:false});}
+          c.accountDocumentId=null;c.controlDocumentId=null;
+          const quantity=target.direction==="payable"?sub("0",total):total,newOpening=this.append({token:uid(),type:"installmentOpen",date,preservePrecision228:true,notes:"اصلاح قرارداد اقساط: "+input.title},this.installmentEntries228(target,g,quantity),{contract:id,physical:false});
+          if(target.affectAccount)c.accountDocumentId=newOpening.id;else c.controlDocumentId=newOpening.id;
+        }else if(dec(delta)!==0n){const quantity=c.direction==="payable"?sub("0",delta):delta;this.append({token:uid(),type:"installmentAdjust225",date,preservePrecision228:true,notes:"اصلاح قرارداد اقساط: "+input.title},this.installmentEntries228(c,g,quantity),{contract:id,physical:false});}
         for(const key of ["partyKind","partyId","bankId","groupId","good","goodsGroup","direction","affectAccount","commitmentKind"])c[key]=target[key];c.partyName=party.name;c.goodName=g.name;c.unit=clone(this.find("units",g.unitId));
         c.title=String(input.title).trim();c.dues=dues;c.count=dues.length;c.total=total;c.amount=dues.every(d=>d.amount===dues[0].amount)?dues[0].amount:"";c.tags=[...new Set(input.tags || c.tags || [])];c.tags.forEach(t=>this.find("tags",t,true));c.updated=new Date().toISOString();
         this.audit("installment-update225","installmentContracts214",id,before,clone(c));return clone(c);
+      });
+    }
+    reportEntries228() {
+      const docs=new Map(this.s.documents.map(d=>[d.id,d])),headers=new Map((this.s.invoiceHeaders214 || []).map(h=>[h.id,h]));
+      return this.entries().filter(e=>{const d=docs.get(e.document),source=d?.reversalOf?docs.get(d.reversalOf):d,h=headers.get(d?.invoiceHeader || source?.invoiceHeader),row=d?.invoiceRow || source?.invoiceRow;return !h || (h.status!=="deleted" && (!row || h.rows?.some(r=>r.id===row)));});
+    }
+    reverseInstallment228(settlementId,reason,date) {
+      return this.transaction(()=>{
+        const payment=this.find("installmentSettlements216",settlementId),before=clone(payment);
+        if(payment.returnDocument228 || this.s.documents.some(d=>d.reversalOf===payment.documentId))throw Error("این پرداخت قبلاً برگشت خورده است");
+        const source=this.find("documents",payment.documentId);if(date && date<source.date)throw Error("تاریخ برگشت نباید قبل از پرداخت باشد");const reversal=this.reverse(source.id,reason || "برگشت پرداخت قسط",uid(),date);
+        payment.returnDocument228=reversal.id;payment.returnedAt228=new Date().toISOString();
+        const h=(this.s.invoiceHeaders214 || []).find(h=>h.id===source.invoiceHeader),row=h?.rows?.find(r=>r.id===source.invoiceRow);if(row)row.settlementReturned228=reversal.id;
+        this.audit("installment-return228","installmentSettlements216",payment.id,before,clone(payment));return clone(reversal);
+      });
+    }
+    installmentMatrix228(rate=this.s.installmentGoldRate228) {
+      const groups=new Map(),goldRate=rate && dec(rate)>0n?str(dec(rate)):null;
+      for(const c of this.s.installmentContracts214 || []){
+        const good=this.find("goods",c.good),material=norm(this.s.materials?.find(m=>m.id===good.materialId)?.name || good.balanceMaterial220 || good.metal || ""),gold=good.mode==="weight" && material==="طلا",toman=c.unit.currencyCode==="IRT",key=gold || toman?"toman":"native:"+c.good;
+        const group=groups.get(key) || {key,toman:gold || toman,unit:gold || toman?{name:"تومان",dimension:"currency",currencyCode:"IRT"}:clone(c.unit),contracts:[],months:new Map()};
+        const bank=this.s.funds.find(f=>f.id===c.partyId),account=bank?.accountNumber || this.s.funds.find(f=>f.id===c.bankAccountId)?.accountNumber || "";
+        group.contracts.push({id:c.id,title:[c.title,c.partyName,account,c.direction==="payable"?"پرداختنی":"دریافتی"].filter(Boolean).join(" — "),gold,unit:clone(c.unit)});
+        for(const due of c.dues){const month=norm(due.jalali).slice(0,7),r=group.months.get(month)||{month,cells:{}};const cell=r.cells[c.id] || {amount:"0",remaining:"0",dueIds:[]};cell.amount=add(cell.amount,due.amount);cell.remaining=add(cell.remaining,this.installmentRemaining216(c.id,due.id));cell.dueIds.push(due.id);r.cells[c.id]=cell;group.months.set(month,r);}
+        groups.set(key,group);
+      }
+      return [...groups.values()].map(g=>{
+        const totals={};let grand="0";
+        const months=[...g.months.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(r=>{
+          let total="0";
+          for(const contract of g.contracts){const cell=r.cells[contract.id];if(!cell)continue;const c=this.find("installmentContracts214",contract.id),good=this.find("goods",c.good);let value=cell.amount;
+            if(contract.gold){if(!goldRate){cell.error="نرخ طلا لازم است";value=null;}else if(!good.purity){cell.error="عیار طلا لازم است";value=null;}else {const numerator=dec(cell.amount)*dec(c.unit.factor)*dec(good.purity)*dec(goldRate),denominator=dec("750")*dec("4.3318")*SCALE;value=str(divRound(numerator,denominator*SCALE)*SCALE);}}
+            else if(g.toman)value=str(divRound(dec(value),SCALE)*SCALE);
+            cell.value=value===null?null:c.direction==="payable"?sub("0",value):value;
+            if(cell.value===null){total=null;totals[c.id]=null;}else{if(total!==null)total=add(total,cell.value);if(totals[c.id]!==null)totals[c.id]=add(totals[c.id] || "0",cell.value);}
+          }
+          if(total===null)grand=null;else if(grand!==null)grand=add(grand,total);return {...r,total,error:Object.values(r.cells).find(c=>c.error)?.error};
+        });return {...g,months,totals,grand,error:months.find(m=>m.error)?.error};
       });
     }
     installmentMonths225() {

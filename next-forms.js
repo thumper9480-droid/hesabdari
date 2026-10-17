@@ -184,7 +184,7 @@ globalThis.SadraForms214 = {
       const previous=btn("فاکتور قبلی",()=>{if(!persistInvoice(error,true))return;if(position>0){ledger().discardEmptyInvoice219(invoice.id);invoice=clone(existing[position-1]);invoiceRow=freshInvoiceRow216();unlocked218=false;rowOpen218=false;selected218=0;rerender();}});
       previous.disabled=position<=0;
       const next=btn("فاکتور بعدی",()=>{if(!persistInvoice(error,true))return;if(position>=0 && position<existing.length-1){ledger().discardEmptyInvoice219(invoice.id);invoice=clone(existing[position+1]);invoiceRow=freshInvoiceRow216();unlocked218=false;rowOpen218=false;selected218=0;}else reserveInvoice();rerender();});
-      actions.append(previous,next,btn("فاکتور جدید",()=>shortcut("F1")),btn("F2 سطر جدید",()=>shortcut("F2")),btn("F3 اصلاح فاکتور",()=>shortcut("F3")),btn("F4 حذف فاکتور",()=>shortcut("F4"),"danger"),btn("F5 چاپ فاکتور",()=>shortcut("F5")));actions.classList.add("invoice214-actions");
+      actions.append(previous,next,btn("F1 فاکتور جدید",()=>shortcut("F1")),btn("F2 سطر جدید",()=>shortcut("F2")),btn("F3 اصلاح فاکتور",()=>shortcut("F3")),btn("F4 حذف فاکتور",()=>shortcut("F4"),"danger"),btn("F5 چاپ فاکتور",()=>shortcut("F5")));actions.classList.add("invoice214-actions");
       const number=input(invoice.number);number.id="invoice214-number";number.readOnly=false;number.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();e.stopImmediatePropagation();try{const requested=integer217(number.value);if(requested===invoice.number && unlocked218 && !invoice.archive225 && invoice.status!=="deleted"){error.textContent="";error.className="";document.getElementById("invoice214-year")?.focus();return;}if(invoice.id && unlocked218 && !persistInvoice(error,true))return;openNumber225(requested);}catch(err){showError(error,err);}}});number.inputMode="numeric";number.setAttribute("aria-label","شماره فاکتور");grid.append(field("شماره فاکتور",number));
       if(invoice.archive225){frame.append(actions,grid,error);host.append(frame,card(el("h3","فاکتور آرشیوی "+f(invoice.number)),table(["طرف حساب","کالا / ارز","مقدار","واحد","توضیحات"],(env.legacyRows225?.(invoice.number) || []).map(cells=>({cells}))),btn("باز کردن اصل فاکتور آرشیوی",()=>env.openLegacyInvoice225(invoice.number))));number.focus();return;}
       const date=el("div",null,"invoice214-date"),parts=invoice.jalali.split("/"), dateControls=[];
@@ -267,7 +267,7 @@ globalThis.SadraForms214 = {
                 const percent=chosen.catalogFeeBasis==="weightPercent";
                 if(mode==="weight" && !percent)numberField("count","تعداد برای محاسبهٔ کارمزد");
                 if(chosen.catalogFeeMode==="variable")numberField("feeValue",percent?"کارمزد متغیر — درصد از وزن":"کارمزد متغیر — تومان به‌ازای هر عدد");
-                else grid.append(el("p","کارمزد ثابت: "+f(chosen.catalogFeeValue)+(percent?" درصد از وزن":" تومان به‌ازای هر عدد"),"n-muted"));
+                else grid.append(el("p","کارمزد ثابت: "+(percent?f(chosen.catalogFeeValue):amount219(chosen.catalogFeeValue,"تومان"))+(percent?" درصد از وزن":" تومان به‌ازای هر عدد"),"n-muted"));
               }
             }
           }
@@ -327,6 +327,7 @@ globalThis.SadraForms214 = {
     }
     function editRow218(row) {
       if(!unlocked218){env.message("ابتدا F3 را برای اصلاح فاکتور بزنید",true);return;}
+      if(row.settlementReturned228){env.message("این پرداخت برگشت خورده است؛ برای پرداخت دوباره سطر تازه ثبت کنید",true);return;}
       selected218=invoice.rows.findIndex(r=>r.id===row.id);invoiceRow={...clone(row),tag:row.tags?.[0] || ""};
       if(row.operation==="receive" && !invoiceRow.lot){const entry=ledger().s.documents.find(d=>d.id===row.documentId)?.entries.find(e=>e.bucket==="stock" && e.lot && dec(e.quantity)>0n);if(entry)invoiceRow.lot=entry.lot;}
       rowOpen218=true;invoiceFocus="row216-operation";rerender();
@@ -495,20 +496,41 @@ cards.append(item);
       }catch(e){showError(error,e);}};
       enterFlow(form);host.append(card(form));
       const contracts=[...(ledger().s.installmentContracts214 || [])].reverse();
-      if(contracts.length)host.append(card(el("h3","قراردادهای ثبت‌شده"),table(["نام قرارداد","نوع اقساط","طرف حساب","هر قسط","تعداد","جمع تعهد","ریزحساب"],contracts.map(c=>({item:c,cells:[c.title,c.direction==="payable"?"بدهکار شدم":"طلبکار شدم",c.partyName,(c.amount?f(c.amount)+" "+c.unit.name:"مطابق سررسیدها"),f(c.count),f(c.total)+" "+c.unit.name,c.affectAccount?"محاسبه می‌شود":"محاسبه نمی‌شود"]})),c=>bar(btn("ویرایش قرارداد / اقساط",()=>editContract225(c)),btn("سررسیدها",()=>showSchedule(c))))));
+      if(contracts.length)host.append(card(el("h3","قراردادهای ثبت‌شده"),table(["نام قرارداد","نوع اقساط","طرف حساب","هر قسط","تعداد","جمع تعهد","ریزحساب"],contracts.map(c=>({item:c,cells:[c.title,c.direction==="payable"?"بدهکار شدم":"طلبکار شدم",c.partyName,(c.amount?amount219(c.amount,c.unit)+" "+c.unit.name:"مطابق سررسیدها"),f(c.count),amount219(c.total,c.unit)+" "+c.unit.name,c.affectAccount?"محاسبه می‌شود":"محاسبه نمی‌شود"]})),c=>bar(btn("ویرایش قرارداد / اقساط",()=>editContract225(c)),btn("سررسیدها",()=>showSchedule(c))))));
       monthlyInstallments225();
       const old=env.legacyInstallments?.() || [];
       if(old.length)host.append(card(el("h3","سوابق قراردادهای قبلی"),table(["نام قرارداد","طرف حساب","سررسید","مقدار","مانده"],old.map(x=>({cells:[x.title,x.party,x.date,f(x.total)+" "+x.unit,f(x.remaining)+" "+x.unit]}))),btn("مشاهده و تسویهٔ قراردادهای قبلی",()=>env.openLegacyInstallments())));
     }
-    function monthlyInstallments225(){
-      const months=["فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور","مهر","آبان","آذر","دی","بهمن","اسفند"];
-      for(const g of ledger().installmentMonths225()){
-        const totals=g.contracts.map(c=>g.months.reduce((q,m)=>add(q,m.values[c.id] || "0"),"0"));
-        const rows=[{cells:["جمع کل","",amount219(totals.reduce((q,n)=>add(q,n),"0"),g.unit),...totals.map(q=>amount219(q,g.unit))]},...g.months.map(m=>({cells:[f(m.month.slice(0,4)),months[Number(m.month.slice(5))-1],amount219(m.total,g.unit),...g.contracts.map(c=>amount219(m.values[c.id] || "0",g.unit))]}))];
-        const block=card(el("h3","گزارش ماهانهٔ ماندهٔ اقساط — "+name("goods",g.good)+" ("+g.unit.name+")"),table(["سال","ماه","جمع ماه",...g.contracts.map(c=>c.title)],rows));block.classList.add("installment225-months");host.append(block);
-      }
+    function payments228(c,due){
+      const d=el("dialog"),reason=input("برگشت پرداخت قسط"),error=el("div"),payments=(ledger().s.installmentSettlements216 || []).filter(p=>p.contractId===c.id && p.dueId===due.id);
+      d.append(el("h3","پرداخت‌ها و برگشت — "+c.title+" — "+f(due.jalali)),field("علت برگشت",reason),table(["مقدار","تاریخ","فاکتور","وضعیت"],payments.map(p=>{const source=ledger().s.documents.find(x=>x.id===p.documentId),reversed=ledger().s.documents.some(x=>x.reversalOf===p.documentId);return {item:p,cells:[amount219(p.amount,c.unit),f(p.date),f(source?.invoiceNumber || source?.number),reversed?"برگشت‌شده":"ثبت‌شده"]};}),p=>ledger().s.documents.some(x=>x.reversalOf===p.documentId)?el("span","—"):btn("برگشت پرداخت",()=>{try{if(!confirm("اثر این پرداخت در حساب و بانک/صندوق برگشت داده شود؟"))return;ledger().reverseInstallment228(p.id,reason.value,legacyDate(today()));d.close();rerender();env.message("پرداخت برگشت خورد و ماندهٔ قسط به‌روز شد");}catch(e){showError(error,e);}},"danger")),error,btn("بستن",()=>d.close()));host.append(d);d.onclose=()=>d.remove();d.showModal();
     }
-    function editContract225(original){
+    function settleDue228(c,due){
+      const good=ledger().s.goods.find(g=>g.id===c.good),funds=active("funds").filter(f=>f.nature===(good.mode==="currency"?"currency":"commodity") && (!f.assetId || f.assetId===good.assetId)),d=el("dialog"),fund=select(funds,"",null);
+      d.append(el("h3","تسویهٔ قسط — "+c.title),field("بانک / صندوق واقعی",fund),btn("ورود به فاکتور",()=>{const target=funds.find(f=>f.id===fund.value);if(!target){env.message("بانک یا صندوق را انتخاب کنید",true);return;}d.close();env.invoiceRoute228();reserveInvoice();Object.assign(invoice,{partyKind:target.legacyKind==="banks"?"banks":"funds",partyId:target.id,bankId:target.bankId || ""});invoiceRow={...freshInvoiceRow216(),operation:c.direction==="payable"?"pay":"receive",receiptKind:good.mode==="currency"?"currency":"commodity",assetId:good.assetId,good:good.id,goodsGroup:c.goodsGroup || good.groupId || "__ungrouped",unitId:good.unitId,partyKind:"installments",partyId:c.id,contractId:c.id,dueId:due.id,amount:ledger().installmentRemaining216(c.id,due.id),notes:"تسویهٔ قسط — "+c.title};if(good.standardWeight)invoiceRow.count=div(invoiceRow.amount,ledger().convert(good.standardWeight,good.standardWeightUnitId,good.unitId));invoiceFocus="row216-amount";rerender();}),btn("انصراف",()=>d.close()));host.append(d);d.onclose=()=>d.remove();d.showModal();
+    }
+    function contractDetails228(c,dueIds){
+      const dues=c.dues.filter(d=>!dueIds || dueIds.includes(d.id));
+      const block=card(el("h3","جزئیات قرارداد — "+c.title+" — "+c.partyName),el("p","دارایی قرارداد: "+c.goodName+" — واحد: "+c.unit.name+(ledger().s.goods.find(g=>g.id===c.good)?.purity?" — عیار "+f(ledger().s.goods.find(g=>g.id===c.good).purity):"")),table(["شماره قسط","سررسید","اصل قسط","پرداخت / دریافت‌شده","مانده"],dues.map(d=>{const remaining=ledger().installmentRemaining216(c.id,d.id);return {item:d,cells:[f(c.dues.indexOf(d)+1),f(d.jalali),amount219(d.amount,c.unit),amount219(sub(d.amount,remaining),c.unit),amount219(remaining,c.unit)]};}),due=>bar(...(dec(ledger().installmentRemaining216(c.id,due.id))>0n?[btn("تسویه قسط",()=>settleDue228(c,due))]:[]),btn("پرداخت‌ها / برگشت",()=>payments228(c,due)),btn("اصلاح قسط",()=>editContract225(c,due.id)))));block.classList.add("installment228-details");return block;
+    }
+    function monthlyInstallments225(){
+      const contracts=ledger().s.installmentContracts214 || [];if(!contracts.length)return;
+      const months=["فروردین","اردیبهشت","خرداد","تیر","مرداد","شهریور","مهر","آبان","آذر","دی","بهمن","اسفند"];
+      for(const c of contracts)host.append(contractDetails228(c));
+      const gold=contracts.some(c=>{const g=ledger().s.goods.find(g=>g.id===c.good);return g?.mode==="weight" && norm(ledger().s.materials?.find(m=>m.id===g.materialId)?.name || g.balanceMaterial220 || g.metal)==="طلا";});
+      if(gold){const rate=input(ledger().s.installmentGoldRate228 || ""),error=el("div");rate.id="installment228-rate";rate.inputMode="decimal";host.append(card(field("نرخ هر مثقال طلای معادل ۷۵۰ (تومان)",rate),btn("ثبت نرخ طلا",()=>{try{const value=ledger().round(rate.value,ledger().s.units.find(u=>u.currencyCode==="IRT").id);if(dec(value)<=0n)throw Error("نرخ طلا باید مثبت باشد");ledger().transaction(()=>{const before=ledger().s.installmentGoldRate228;ledger().s.installmentGoldRate228=value;ledger().audit("installment-rate228","settings","gold",before,value);});rerender();}catch(e){showError(error,e);}}),error));}
+      const content=el("section");content.id="installment228-monthly";
+      const matrixNumber228=(value,unit,error="نرخ طلا لازم است")=>{const n=el("bdi",value===null?error:amount219(value,unit,true),value!==null && dec(value)<0n?"invoice222-negative":"invoice222-positive");n.dir="ltr";return n;};
+      for(const g of ledger().installmentMatrix228()){
+        function cell(c,m){const value=m?.cells[c.id];if(!value)return "—";const wrap=el("div");wrap.append(value.error?el("span",value.error):matrixNumber228(value.value,g.unit));if(c.gold){const contract=contracts.find(x=>x.id===c.id),good=ledger().s.goods.find(g=>g.id===contract.good);wrap.append(el("small","وزن قرارداد: "+amount219(value.amount,c.unit)+" "+c.unit.name));if(good?.purity)wrap.append(el("small","معادل ۷۵۰: "+amount219(ledger().equivalent(mul(value.amount,c.unit.factor),good.purity,"750"),"گرم")+" گرم"));}
+          const selectDue=select(value.dueIds.map(id=>{const contract=contracts.find(x=>x.id===c.id),due=contract.dues.find(d=>d.id===id);return {id,name:"قسط "+f(contract.dues.indexOf(due)+1)+" — "+f(due.jalali)};}),"","انتخاب قسط‌ها");selectDue.onchange=()=>{const contract=contracts.find(x=>x.id===c.id),d=el("dialog");d.append(contractDetails228(contract,[selectDue.value]),btn("بستن",()=>d.close()));host.append(d);d.onclose=()=>d.remove();d.showModal();selectDue.value="";};wrap.append(selectDue);return wrap;}
+        const rows=[{cells:["جمع کل","",matrixNumber228(g.grand,g.unit,g.error),...g.contracts.map(c=>matrixNumber228(g.totals[c.id]===null?null:g.totals[c.id] || "0",g.unit,g.months.find(m=>m.cells[c.id]?.error)?.cells[c.id].error))]},...g.months.map(m=>({cells:[f(m.month.slice(0,4)),months[Number(m.month.slice(5))-1],matrixNumber228(m.total,g.unit,m.error),...g.contracts.map(c=>cell(c,m))]}))];
+        const block=card(el("h3","گزارش ماهانهٔ اقساط — "+g.unit.name),el("p","جمع خالص اصل اقساط در ماه سررسید؛ پرداختنی منفی، دریافتی مثبت. ماندهٔ واقعی در جزئیات قرارداد است.","n-muted"),table(["سال","ماه","جمع ماه",...g.contracts.map(c=>c.title)],rows));block.classList.add("installment225-months");content.append(block);
+      }
+      const report=el("section");report.id="installment228-report";for(const details of [...host.children].filter(n=>n.classList.contains("installment228-details")))report.append(details);if(gold)report.append(el("p",ledger().s.installmentGoldRate228?"نرخ هر مثقال طلای معادل ۷۵۰: "+amount219(ledger().s.installmentGoldRate228,"تومان")+" تومان":"نرخ طلا لازم است"));report.append(content);
+      host.append(bar(btn("اکسل گزارش ماهانه",()=>SadraReport223.excel(report)),btn("چاپ / PDF گزارش ماهانه",()=>SadraReport223.print(report))),report);
+    }
+    function editContract225(original,selectedDue){
       const c=clone(original),d=el("dialog"),form=el("form"),error=el("div"),title=input(c.title),list=el("div");
       d.className="installment225-editor";const top=el("div",null,"n-grid"),parties=el("div");partyFields(parties,c,()=>{},"editinst225");top.append(field("نام قرارداد",title),parties);
       function choice(key,label,items,change){const control=select(items,String(c[key]),null);control.id="editinst225-"+key;control.onchange=()=>{c[key]=key==="affectAccount"?control.value==="true":control.value;change?.();};top.append(field(label,control));return control;}
@@ -517,21 +539,19 @@ cards.append(item);
       const tags=select(active("tags"),c.tags?.[0] || "","بدون برچسب");tags.onchange=()=>c.tags=tags.value?[tags.value]:[];top.append(field("برچسب",tags));
       form.append(el("h3","ویرایش قرارداد و اقساط"),top,list,error);
       function draw(){list.replaceChildren();for(const [i,due]of c.dues.entries()){
-        const amount=input(due.amount),date=input(due.jalali);amount.oninput=()=>due.amount=amount.value;date.oninput=()=>due.jalali=date.value;
+        const amount=input(due.amount),date=input(f(due.jalali));amount.id="editdue228-"+due.id;amount.oninput=()=>due.amount=amount.value;date.oninput=()=>due.jalali=date.value;
         list.append(bar(el("b","قسط "+f(i+1)),field("مقدار",amount),field("سررسید شمسی",date),el("span","مانده: "+f(due.id?ledger().installmentRemaining216(c.id,due.id):due.amount)+" "+c.unit.name),btn("حذف قسط",()=>{c.dues.splice(i,1);draw();},"danger")));
       }}draw();
       form.append(btn("افزودن قسط",()=>{const previous=c.dues.at(-1),next=dueDates(previous?.jalali || today(),2)[1];c.dues.push({...next,id:null,amount:previous?.amount || original.amount || "1"});draw();}));
       const save=btn("ثبت اصلاحات",()=>{try{const dues=c.dues.map(d=>({...d,jalali:jalali(d.jalali),date:legacyDate(jalali(d.jalali))}));ledger().updateInstallments225(c.id,{...c,title:title.value,dues},legacyDate(today()));d.close();rerender();env.message("قرارداد اصلاح شد");}catch(e){showError(error,e);}});
-      form.onsubmit=e=>e.preventDefault();form.append(bar(save,btn("انصراف",()=>d.close())));d.append(form);host.append(d);d.onclose=()=>d.remove();d.showModal();title.focus();
+      form.onsubmit=e=>e.preventDefault();form.append(bar(save,btn("انصراف",()=>d.close())));d.append(form);host.append(d);d.onclose=()=>d.remove();d.showModal();(selectedDue?document.getElementById("editdue228-"+selectedDue):title)?.focus();
     }
     function openNumber225(number){
       const h=(ledger().s.invoiceHeaders214 || []).find(h=>h.number===Number(number));if(h){open221(h.id);return;}
       const old=(env.legacyInvoices225?.() || []).find(d=>Number(d.no)===Number(number));if(!old)throw Error("فاکتوری با این شماره ثبت نشده است");
       invoice={id:"archive-"+old.no,number:Number(old.no),jalali:old.date || "",archive225:true,status:"posted"};unlocked218=false;rowOpen218=false;rerender();
     }
-    function showSchedule(c) {
-      const d=el("dialog");d.append(el("h3",c.title),table(["قسط","سررسید شمسی","مقدار","مانده"],c.dues.map((due,i)=>({cells:[f(i+1),f(due.jalali),f(due.amount)+" "+c.unit.name,f(ledger().installmentRemaining216(c.id,due.id))+" "+c.unit.name]}))),btn("بستن",()=>d.close()));host.append(d);d.onclose=()=>d.remove();d.showModal();
-    }
+    function showSchedule(c) {const d=el("dialog");d.append(contractDetails228(c),btn("بستن",()=>d.close()));host.append(d);d.onclose=()=>d.remove();d.showModal();}
     function leave219(){if(invoice?.id)ledger().discardEmptyInvoice219(invoice.id);invoice=null;}
     function open221(id){const h=ledger().s.invoiceHeaders214?.find(h=>h.id===id);if(!h)throw Error("فاکتور یافت نشد");invoice=clone(h);unlocked218=false;rowOpen218=false;selected218=0;invoiceRow=freshInvoiceRow216();invoiceFocus="invoice214-number";rerender();}
     function snapshot224(){return invoice?{invoice:clone(invoice),row:clone(invoiceRow),unlocked:unlocked218,rowOpen:rowOpen218,selected:selected218}:null;}

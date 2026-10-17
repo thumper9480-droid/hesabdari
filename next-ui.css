@@ -500,3 +500,8 @@ aside button:focus-visible,aside summary:focus-visible{outline:3px solid #ffe08a
 aside button[aria-current=true]{outline:2px solid #8ce5bb;outline-offset:2px}
 dialog.installment225-editor{width:min(950px,94vw);max-height:90vh;overflow:auto}
 @media(max-width:600px){#next204 .installment225-grid .inst214-party{grid-column:auto}}
+/* Update 228: monthly installment values, native weight and valuation are distinct. */
+#next204 .installment225-months td small{display:block;margin:3px 0;font-size:11px}
+#next204 .installment225-months td bdi{font-weight:700;white-space:nowrap}
+#next204 .installment225-months td select{margin-top:6px;min-width:135px}
+#next204 .installment228-details>p{margin:4px 0 10px;font-size:12px}
