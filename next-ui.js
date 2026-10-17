@@ -838,14 +838,19 @@ globalThis.SadraNext = {
         });
     }
     const navigation218=[];
+    let reportState222=null;
+    function rememberReport222(){if(route!=="reports")return;reportState222={filter:clone(filter),page,scroll:window.scrollY,main:document.querySelector("main")?.scrollTop || 0,host:host.scrollTop};}
+    function restoreReport222(){if(!reportState222)return;const saved=reportState222;requestAnimationFrame(()=>{if(route!=="reports")return;window.scrollTo(0,saved.scroll);const main=document.querySelector("main");if(main)main.scrollTop=saved.main;host.scrollTop=saved.host;});}
+
     function go(next) {
+      if(next!==route)rememberReport222();
       if(route==="operations" && next!==route)forms214?.leave219();
       if(!host.hidden && next!==route)navigation218.push(route);
       syncLegacy();
       route = next;
       tab = "";
-      filter = {};
-      page = 0;
+      filter = next==="reports" && reportState222?clone(reportState222.filter):{};
+      page = next==="reports" && reportState222?reportState222.page:0;
       host.hidden = false;
       document.body.classList.add("next204-active");
       document
@@ -855,6 +860,7 @@ globalThis.SadraNext = {
         );
       if (forms214) forms214.enter(next);
       render();
+      if(next==="reports")restoreReport222();
     }
     function fieldOptions(kind, all = false) {
       if (kind === "banks")
@@ -2211,7 +2217,10 @@ globalThis.SadraNext = {
     function balanceSummary220(entries,title,byAccount=false,id="") {
       const groups=ledger.aggregate221(entries,byAccount).filter(g=>dec(g.quantity)!==0n),block=card(el("h3",title));if(id)block.id=id;
       if(!groups.length){block.append(el("p",entries.length?"ماندهٔ این انتخاب تسویه است.":"گردشی برای این انتخاب ثبت نشده است.","n-muted"));return block;}
-      block.append(table([...(byAccount?["طرف حساب"]:[]),"مبنای مانده","عیار","مانده","واحد","وضعیت"],groups.map(g=>({item:g,cells:[...(byAccount?[name(g.bucket==="person"?"people":g.bucket==="expense"?"expenses":g.bucket==="income"?"incomes":"funds",g.account)]:[]),g.name,f(g.purity),amount219(g.quantity,g.unit,true),g.unit.name,ledger.label221(g.quantity,g.bucket)]}))));
+      if(id==="report220-balances") {
+        const accounts=new Map();for(const g of groups){if(!accounts.has(g.account))accounts.set(g.account,[]);accounts.get(g.account).push(g);}
+        for(const values of accounts.values()){const first=values[0];if(accounts.size>1)block.append(el("h4",name(first.bucket==="person"?"people":first.bucket==="expense"?"expenses":first.bucket==="income"?"incomes":"funds",first.account)));block.append(table(["مبنای مانده","عیار","مانده","واحد","وضعیت"],values.map(g=>({cells:[g.name,f(g.purity),amount219(g.quantity,g.unit,true),g.unit.name,ledger.label221(g.quantity,g.bucket)]}))));}
+      } else block.append(table([...(byAccount?["طرف حساب"]:[]),"مبنای مانده","عیار","مانده","واحد","وضعیت"],groups.map(g=>({item:g,cells:[...(byAccount?[name(g.bucket==="person"?"people":g.bucket==="expense"?"expenses":g.bucket==="income"?"incomes":"funds",g.account)]:[]),g.name,f(g.purity),amount219(g.quantity,g.unit,true),g.unit.name,ledger.label221(g.quantity,g.bucket)]}))));
       if(groups.some(g=>g.unclassified))block.append(el("p","داراییِ بدون جنس مشخص، برای جلوگیری از اختلاط طلا و نقره جدا نمایش داده می‌شود؛ جنس آن را در معرفی کالا تعیین کنید.","n-notice"));
       return block;
     }
@@ -2635,10 +2644,12 @@ globalThis.SadraNext = {
     }
     function route221(entry,source) {
       const doc=source.docs.get(entry.document),header=ledger.s.invoiceHeaders214?.find(h=>h.id===doc?.invoiceHeader),row=header?.rows?.find(r=>r.id===doc?.invoiceRow);
+      if(row && ["buy","sell"].includes(row.operation)){const person=name("people",header.partyId);return row.operation==="buy"?{from:person,to:"ما (تعهد خرید)",party:person}:{from:"ما (تعهد فروش)",to:person,party:person};}
       if(row){const kind=row.partyKind==="banks"?"funds":row.partyKind,party=row.partyKind==="installments"?ledger.s.installmentContracts214?.find(c=>c.id===row.contractId)?.title:name(kind,row.partyId);return {from:row.operation==="receive"?name(header.partyKind==="banks"?"funds":header.partyKind,header.partyId):party,to:row.operation==="receive"?party:name(header.partyKind==="banks"?"funds":header.partyKind,header.partyId),party};}
       const peers=doc?.entries?.filter(e=>e.account!==entry.account) || [];return {from:entry.quantity[0]==="-"?accountName(entry):peers.map(accountName).join("، "),to:entry.quantity[0]==="-"?peers.map(accountName).join("، "):accountName(entry),party:peers.map(accountName).join("، ")};
     }
     function openReport221(e,source) {
+      rememberReport222();
       const d=source.docs.get(e.document);if(d?.invoiceHeader){go("operations");forms214.open221(d.invoiceHeader);return;}
       if(d?.archive && d.original){document.body.classList.remove("next204-active");host.hidden=true;bridge.openInvoice?.(d.original.no);return;}
       showDocument(e.document,{readOnly:true});
@@ -2687,15 +2698,15 @@ globalThis.SadraNext = {
         const bucket={people:"person",expenses:"expense",incomes:"income"}[kind];if(e.bucket!==bucket || (filter.partyId && e.account!==filter.partyId))return false;
         const entity=ledger.s[kind].find(x=>x.id===e.account) || e.accountSnapshot;return !filter.groupId || entity?.groupId===filter.groupId;
       }).sort((a,b)=>(a.date || "").localeCompare(b.date || "") || String(a.at).localeCompare(String(b.at)));
-      latestHeaders=["تاریخ","شماره فاکتور","عملیات","طرف حساب","طرف سطر فاکتور","از کجا","به کجا","کالا / ارز سطر","مبنای مانده","عیار","مقدار","واحد","تعداد","مانده","وضعیت مانده","توضیحات"];
+      latestHeaders=["تاریخ","شماره فاکتور","عملیات","از کجا","به کجا","کالا / ارز سطر","مبنای مانده","عیار","مقدار","واحد","تعداد","مانده","وضعیت مانده","توضیحات"];
       const rows=entries.map(e=>{
         const d=source.docs.get(e.document),value=ledger.view221(e),key=[e.bucket,e.account,value.key].join("|"),after=add(running.get(key) || "0",value.quantity);running.set(key,after);
-        const route=route221(e,source);return {item:e,cells:[date221(e.date),f(d?.invoiceNumber || d?.number || ""),types[e.type] || e.type,accountName(e),route.party,route.from,route.to,value.goodName,value.name,f(value.purity),amount219(value.quantity,value.unit,true),value.unit.name,value.count!==null?amount219(value.count):"—",amount219(after,value.unit,true),ledger.label221(after,e.bucket),e.notes || ""]};
+        const route=route221(e,source);return {item:e,cells:[date221(e.date),f(d?.invoiceNumber || d?.number || ""),types[e.type] || e.type,route.from,route.to,value.goodName,value.name,f(value.purity),amount219(value.quantity,value.unit,true),value.unit.name,value.count!==null?amount219(value.count):"—",amount219(after,value.unit,true),ledger.label221(after,e.bucket),e.notes || ""]};
       });
       latestRows=rows.map(r=>r.cells);host.append(balanceSummary220(entries,kind==="people"?"ماندهٔ نهایی فرد":"مانده‌های نهایی به تفکیک دارایی و عیار",true,"report220-balances"),bar(btn("چاپ گزارش",printReport),el("span",f(rows.length)+" ردیف")));
       const listing=table(latestHeaders,rows);listing.id="report221-rows";
       [...listing.querySelectorAll("tbody tr")].forEach((tr,i)=>{tr.tabIndex=0;tr.ondblclick=()=>openReport221(rows[i].item,source);tr.onkeydown=e=>{if(e.key==="Enter")openReport221(rows[i].item,source);};});
-      const foot=el("tfoot");for(const g of ledger.aggregate221(entries,true)){const tr=el("tr");for(const [i,title]of latestHeaders.entries()){let text="";if(i===0)text="جمع / ماندهٔ نهایی";if(i===3)text=name(kind==="banks"?"funds":kind,g.account);if(i===8)text=g.name;if(i===9)text=f(g.purity);if(i===10)text=amount219(g.quantity,g.unit,true);if(i===11)text=g.unit.name;if(i===12 && g.hasCount)text=amount219(g.count,null,true);if(i===13)text=amount219(g.quantity,g.unit,true);if(i===14)text=ledger.label221(g.quantity,g.bucket);tr.append(el("td",text));}foot.append(tr);}listing.querySelector("table").append(foot);host.append(listing);
+      const foot=el("tfoot");for(const g of ledger.aggregate221(entries,true)){const tr=el("tr");for(const [i,title]of latestHeaders.entries()){let text="";if(i===0)text="جمع / ماندهٔ نهایی";if(i===0)text+=" — "+name(kind==="banks"?"funds":kind,g.account);if(i===6)text=g.name;if(i===7)text=f(g.purity);if(i===8)text=amount219(g.quantity,g.unit,true);if(i===9)text=g.unit.name;if(i===10 && g.hasCount)text=amount219(g.count,null,true);if(i===11)text=amount219(g.quantity,g.unit,true);if(i===12)text=ledger.label221(g.quantity,g.bucket);tr.append(el("td",text));}foot.append(tr);}listing.querySelector("table").append(foot);host.append(listing);
     }
     function printReport() {
       const w = window.open("", "_blank", "width=1200,height=850");
@@ -3021,6 +3032,7 @@ globalThis.SadraNext = {
           event.stopImmediatePropagation();
           go(next);
         } else {
+          rememberReport222();
           if(route==="operations")forms214?.leave219();
           document.body.classList.remove("next204-active");
           host.hidden = true;

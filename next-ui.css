@@ -461,3 +461,16 @@ input[data-numeric217=true],input[data-unit219]{direction:ltr;text-align:right}
 #next204 #inventory221-items tbody tr{cursor:pointer}#next204 #inventory221-items tbody tr:hover{background:#e4f3e9}
 #next204 .invoice218-rowlist td,#next204 .invoice218-rowlist th{direction:inherit}
 #next204 .invoice218-rowlist bdi{direction:ltr}
+
+/* Update 222: readable balances and explicit invoice routes. */
+#next204 .invoice219-balance-card{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:15px 18px;flex:1 1 230px;max-width:430px}
+#next204 .invoice222-asset{font-size:19px;line-height:1.6;color:#173f37}
+#next204 .invoice222-quantity{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+#next204 .invoice219-amount{font-size:26px;font-weight:800;line-height:1.6}
+#next204 .invoice222-unit{font-size:16px;color:#53685e}
+#next204 .invoice222-positive{color:#14783c}
+#next204 .invoice222-negative{color:#b52230}
+#next204 .invoice222-fee{display:flex;flex-direction:column;gap:7px;font-size:13px}
+#next204 .invoice222-fee-total{display:flex;gap:7px;flex-wrap:wrap;align-items:baseline;font-size:16px}
+#next204 .invoice222-routes{display:flex;flex-direction:column;gap:7px;padding:12px 15px;margin-top:10px;background:#fff;border-radius:8px;font-size:16px}
+#next204 .invoice222-routes strong{margin-inline:5px}
