@@ -442,3 +442,5 @@ aside > button[data-page="installments"], aside > button[data-page="backup"] { d
 #next204 bdi{direction:ltr;unicode-bidi:isolate}
 input[data-numeric217=true],input[data-unit219]{direction:ltr;text-align:right}
 @media(max-width:650px){#next204 .invoice218-rowlist table{table-layout:auto}#next204 .invoice218-rowlist th,#next204 .invoice218-rowlist td{font-size:11px}#next204 .invoice219-balance-card{min-width:0;flex:1 1 100%}}
+
+#next204 .balance220-dialog{width:min(1200px,94vw);max-width:94vw}#inventory220-controls{margin-bottom:12px}

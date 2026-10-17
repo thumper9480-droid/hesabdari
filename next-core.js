@@ -656,6 +656,61 @@
         })),
       );
     }
+    describeEntry220(entry) {
+      const doc=this.s.documents.find(d=>d.id===entry.document),current=this.s.goods.find(g=>g.id===entry.good);
+      const good=entry.snapshot || doc?.snapshots?.[entry.good] || current;
+      if(!good)throw Error("کالای سطر گزارش یافت نشد");
+      const unit=good.unit || this.find("units",good.unitId),asset=good.asset || this.s.assets.find(a=>a.id===good.assetId);
+      const mode=good.mode,purity=entry.purity || good.purity || "";
+      let quantity=str(dec(entry.quantity)),count=null,material="",key,name=good.name,displayUnit=clone(unit);
+      if(mode==="weight") {
+        if(!unit.factor)throw Error("ضریب واحد وزن برای گزارش مشخص نیست");
+        quantity=mul(quantity,unit.factor);
+        const known=v=>v && !["عیاردار","کالایی","نامشخص"].includes(norm(v))?String(v).trim():"";
+        material=known(current?.balanceMaterial220) || known(good.balanceMaterial220) || known(good.metal) || known(asset?.metal) || (["طلا","نقره","پلاتین","پالادیوم"].includes(norm(asset?.name))?asset.name:"");
+        const family=material?norm(material):"unknown:"+good.id;
+        key=["weight",family,purity || "unknown:"+good.id].join("|");
+        name=(material || "جنس تعیین‌نشده — "+good.name)+(purity?" — عیار "+purity:"");
+        displayUnit=clone(this.s.units.find(u=>u.dimension==="weight" && norm(u.name)===norm("گرم")) || {id:"gram220",name:"گرم",dimension:"weight",factor:"1",decimals:8});
+        if(entry.component!=="fee" && good.standardWeight) {
+          if(entry.count!==undefined && entry.count!==null && entry.count!=="")count=str(dec(entry.count));
+          else {
+            const source=doc?.reversalOf?this.s.documents.find(d=>d.id===doc.reversalOf):doc;
+            if(source?.count && source.quantity)count=mul(div(entry.quantity,source.quantity),source.count);
+            else {const w=this.find("units",good.standardWeightUnitId);count=div(quantity,mul(good.standardWeight,w.factor));}
+          }
+        }
+      } else if(mode==="count") {key=["count",good.id,unit.id].join("|");count=quantity;}
+      else if(mode==="currency") {key=["currency",good.assetId,unit.id].join("|");name=asset?.name || good.name;}
+      else throw Error("نوع کالای گزارش نامعتبر است");
+      return {key,kind:mode,name,unit:displayUnit,purity:mode==="currency"?"":purity,material,quantity,count,good:good.id,goodName:good.name,countedWeight:mode==="weight" && !!good.standardWeight,unclassified:mode==="weight" && !material};
+    }
+    aggregate220(entries,byAccount=false) {
+      const groups=new Map();
+      for(const entry of entries) {
+        const value=this.describeEntry220(entry),key=[entry.bucket,...(byAccount?[entry.account]:[]),value.key].join("|");
+        let group=groups.get(key);
+        if(!group){group={...clone(value),key,bucket:entry.bucket,account:byAccount?entry.account:null,quantity:"0",count:"0",hasCount:false,details:[]};groups.set(key,group);}
+        group.quantity=add(group.quantity,value.quantity);
+        if(value.count!==null){group.count=add(group.count,value.count);group.hasCount=true;}
+        const detailKey=[entry.account,entry.good,entry.purity || "",entry.lot || "",entry.component || "",entry.snapshot?.legacyNormalized?"legacy":""].join("|");
+        let detail=group.details.find(d=>d.key===detailKey);
+        if(!detail){detail={key:detailKey,account:entry.account,good:entry.good,name:value.goodName,quantity:"0",count:"0",hasCount:false,purity:value.purity,unit:clone(value.unit),kind:value.kind,countedWeight:value.countedWeight,lot:entry.lot || "",component:entry.component || "",mark:entry.mark || "",assay:entry.assay || "",documents:[]};group.details.push(detail);}
+        detail.quantity=add(detail.quantity,value.quantity);
+        if(value.count!==null){detail.count=add(detail.count,value.count);detail.hasCount=true;}
+        if(entry.document && !detail.documents.includes(entry.document))detail.documents.push(entry.document);
+      }
+      return [...groups.values()];
+    }
+    accountBalances220(kind,id,entries=this.entries()) {
+      const buckets={people:["person"],expenses:["expense"],incomes:["income"],banks:["stock","commitment"],funds:["stock","commitment"]}[kind] || [];
+      return this.aggregate220(entries.filter(e=>e.account===id && buckets.includes(e.bucket)),true);
+    }
+    label220(quantity,bucket="person") {
+      if(dec(quantity)===0n)return "تسویه";
+      if(bucket==="stock")return dec(quantity)>0n?"موجودی":"کسری موجودی";
+      return dec(quantity)>0n?"بدهکار":"طلبکار";
+    }
     balance(bucket, account, good, lot) {
       return str(
         this.entries()
@@ -1057,7 +1112,7 @@
         }
         if (
           !["opening", "adjustment"].includes(input.type) &&
-          entries.length !== 2
+          (!input.from || !input.to || entries.length < 2)
         )
           throw Error("مبدأ و مقصد کامل لازم است");
         if (
@@ -1126,6 +1181,19 @@
       }
       return record;
     }
+    classifyMaterial220(ids,material) {
+      if(!String(material || "").trim())throw Error("جنس دارایی را مشخص کنید");
+      return this.transaction(()=>{
+        for(const id of ids) {
+          const g=this.find("goods",id),old=g.balanceMaterial220 || g.metal || "";
+          if(g.mode!=="weight")continue;
+          if(old && !["عیاردار","نامشخص"].includes(norm(old)) && norm(old)!==norm(material))throw Error("جنس مشخص‌شدهٔ قبلی متفاوت است");
+          g.balanceMaterial220=String(material).trim();
+          const draft=(this.s.catalogGoods || []).find(d=>d.id===id);if(draft)draft.balanceMaterial220=g.balanceMaterial220;
+          this.audit("classify-material","goods",id,old,g.balanceMaterial220);
+        }
+      });
+    }
     peekInvoiceNumber219(numberFloor=1) {
       return Math.max(Number(numberFloor) || 1,Number(this.s.nextInvoiceNumber214) || 1,...(this.s.invoiceHeaders214 || []).map(h=>Number(h.number)+1),...this.s.documents.map(d=>Number(d.number)+1));
     }
@@ -1184,7 +1252,7 @@
       let asset=old?this.find("assets",old.assetId):this.s.assets.find(a=>a.nature==="commodity" && a.unitId===u.id && norm(a.name)===norm(draft.name));
       if(!asset)asset=this.put("assets",{name:draft.name,nature:"commodity",unitId:u.id,decimals:u.decimals,active:true});
       const pieceUnit=draft.catalogPieceUnitId || old?.standardWeightUnitId || this.s.units.find(u=>u.dimension==="weight" && dec(u.factor || "0")===SCALE)?.id;
-      const g={...old,id:draft.id,name:draft.name,active:true,mode,assetId:asset.id,unitId:u.id,rateUnitId:rate.id,groupId:draft.groupId,feeMode:"none",
+      const g={...old,id:draft.id,name:draft.name,active:true,mode,assetId:asset.id,unitId:u.id,rateUnitId:rate.id,groupId:draft.groupId,feeMode:"none",balanceMaterial220:draft.balanceMaterial220 || old?.balanceMaterial220 || "",
         purity:draft.catalogPurity || old?.purity || "",metal:(draft.catalogPurity || old?.purity)?(old?.metal || "عیاردار"):"",
         standardWeight:draft.catalogMode==="weightCount"?pos(draft.catalogPieceWeight):"",standardWeightUnitId:pieceUnit,allowActual:false};
       if(old && this.used("goods",id) && ["mode","unitId","purity","standardWeight","standardWeightUnitId"].some(k=>(g[k] || "")!==(old[k] || "")))throw Error("واحد، عیار و وزن ثابت کالای دارای سابقه قابل تغییر نیست؛ کالای تازه معرفی کنید");
