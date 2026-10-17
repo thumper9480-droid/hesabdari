@@ -95,9 +95,21 @@ globalThis.SadraNext = {
         return e;
       };
     const f = (v) => {
-      if (v === undefined || v === null || v === "") return "—";
-      return String(v).replace(/\d/g, (c) => "۰۱۲۳۴۵۶۷۸۹"[c]);
+      if(v===undefined || v===null || v==="")return "—";
+      const text=String(v),raw=norm(text).replace(/[\u2066-\u2069,٬]/g,"").replace(/−/g,"-");
+      if(/^[+-]?\d+(?:[.٫]\d+)?$/.test(raw))return C.formatNumber(raw,{group:false,plus:raw.startsWith("+")});
+      return text.replace(/\d/g,c=>"۰۱۲۳۴۵۶۷۸۹"[c]);
     };
+    function amount219(value,unitId=null,plus=false) {
+      const u=typeof unitId==="object"?unitId:ledger?.s.units.find(u=>u.id===unitId) || ledger?.s.units.find(u=>u.id===ledger.s.assets.find(a=>a.id===unitId)?.unitId) || ledger?.s.units.find(u=>norm(u.name)===norm(unitId));
+      return C.formatNumber(value,{unit:u || unitId,plus});
+    }
+    function numericCell219(value,title,unitName) {
+      if(value instanceof Node)return value;
+      if(/شماره|تاریخ|سررسید|عیار|ردیف|^سطر$/.test(title))return value;
+      if(!/مقدار|مبلغ|وزن|مانده|تعداد|کارمزد|بدهکار|بستانکار|پرداخت|دریافت|نرخ|قیمت|جمع|موجودی|رزرو|قابل استفاده|ارزش|ورود|خروج|افتتاحیه/.test(title))return value;
+      try{return amount219(value,/تعداد|درصد|نرخ|قیمت/.test(title)?null:unitName,String(value).replace(/[\u2066-\u2069]/g,"").startsWith("+"));}catch{return value;}
+    }
     const select = (items, value = "", blank = null) => {
       const s = el("select");
       if (blank !== null) {
@@ -123,21 +135,46 @@ globalThis.SadraNext = {
       if(!numeric217(c))return;
       if(c.type==="number"){c.type="text";c.inputMode="decimal";}
       const before=c.value,position=c.selectionStart ?? before.length,offset=before.slice(0,position).replace(/[,٬]/g,"").length;
-      const raw=before.replace(/[,٬]/g,"");
+      const raw=before.replace(/[,٬\u2066-\u2069]/g,"").replace(/٫/g,".");
       if(!/^-?[0-9۰-۹٠-٩]*(?:[.٫][0-9۰-۹٠-٩]*)?$/.test(raw))return;
       const [whole,fraction]=raw.split(/[.٫]/),separator=raw.includes("٫")?"٫":".";
       const formatted=whole.replace(/\B(?=([0-9۰-۹٠-٩]{3})+(?![0-9۰-۹٠-٩]))/g,",")+(fraction!==undefined?separator+fraction:"");
       if(formatted===before)return;c.value=formatted;
       let n=0,caret=0;while(caret<formatted.length && n<offset){if(formatted[caret]!==",")n++;caret++;}c.setSelectionRange(caret,caret);
     }
-    document.addEventListener("input",e=>formatNumber217(e.target),true);
+    document.addEventListener("input",e=>{delete e.target.dataset?.exact219;formatNumber217(e.target);},true);
+    document.addEventListener("focusin",e=>{const c=e.target;if(c.dataset?.exact219!==undefined){c.value=c.dataset.exact219;delete c.dataset.exact219;formatNumber217(c);}},true);
+    document.addEventListener("focusout",e=>{const c=e.target;if(!numeric217(c) || !c.value)return;const unitId=c.dataset.unit219,u=ledger?.s.units.find(u=>u.id===unitId);if(u?.dimension==="weight" && norm(u.name)===norm("گرم")){try{c.dataset.exact219=c.value;c.value=C.formatNumber(c.value,{unit:u,isolate:false});}catch{}}},true);
+
     const cleanControls217=root=>{
       for(const c of root.querySelectorAll("select")) {
         const empty=c.value==="";for(const o of [...c.options])if(!o.value && /انتخاب کنید/.test(o.textContent))o.remove();if(empty)c.selectedIndex=-1;
       }
       for(const c of root.querySelectorAll("input"))formatNumber217(c);
     };
-    new MutationObserver(()=>cleanControls217(document)).observe(document.body,{childList:true,subtree:true});
+    function decorateNumbers219(root) {
+      for(const table of root.querySelectorAll("table")) {
+        const headers=[...table.querySelectorAll("thead th")].map(h=>h.textContent),unitIndex=headers.findIndex(h=>/^واحد(?:\s|$)/.test(h));
+        if(!headers.length)continue;
+        for(const row of table.querySelectorAll("tbody tr,tfoot tr")) {
+          const cells=[...row.cells],unitName=unitIndex>=0?cells[unitIndex]?.textContent:null;
+          cells.forEach((cell,i)=>{if(cell.childElementCount)return;const value=numericCell219(cell.textContent,headers[i] || "",unitName);if(typeof value==="string" && value!==cell.textContent)cell.textContent=value;});
+        }
+      }
+      const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;
+      while((node=walker.nextNode())) {
+        if(node.parentElement?.closest("script,style,input,textarea,option,select,pre,code"))continue;
+        const original=node.nodeValue;let value=original;
+        value=value.replace(/(?<![\p{L}\p{N}/.\u2066])(?:\u2066)?([+−-]?[0-9۰-۹٠-٩][0-9۰-۹٠-٩,٬]*(?:[.٫][0-9۰-۹٠-٩]+)?)(?:\u2069)?\s+(گرم|تومان|ریال|دلار|درهم|لیر)(?![\p{L}])/gu,(all,number,unit)=>{try{return C.formatNumber(number,{unit:unit==="گرم"?"گرم":null,plus:number[0]==="+"})+" "+unit;}catch{return all;}});
+        value=value.replace(/(?<![\p{L}\p{N}/.\u2066])([+−-][0-9۰-۹٠-٩][0-9۰-۹٠-٩,٬]*(?:[.٫][0-9۰-۹٠-٩]+)?)(?![\p{L}\p{N}/.\u2069])/gu,(all,number)=>{try{return C.formatNumber(number,{group:true,plus:number[0]==="+"});}catch{return all;}});
+        if(value!==original)node.nodeValue=value;
+      }
+    }
+    let decorating219=false;
+    new MutationObserver(()=>{if(decorating219)return;decorating219=true;try{cleanControls217(document);decorateNumbers219(document.body);}finally{decorating219=false;}}).observe(document.body,{childList:true,subtree:true,characterData:true});
+    window.addEventListener("keydown",e=>{if((e.key!=="-" && e.code!=="NumpadSubtract") || e.ctrlKey || e.metaKey || e.altKey || !numeric217(e.target))return;
+      e.preventDefault();e.stopImmediatePropagation();const c=e.target;if(c.type==="number"){c.type="text";c.inputMode="decimal";}const start=c.selectionStart ?? c.value.length,end=c.selectionEnd ?? start;c.value=c.value.slice(0,start)+"000"+c.value.slice(end);c.setSelectionRange(start+3,start+3);c.dispatchEvent(new Event("input",{bubbles:true}));
+    },true);
     const choices = (o) =>
       Object.entries(o).map(([id, name]) => ({ id, name }));
     const input = (value = "", type = "text") => {
@@ -536,7 +573,8 @@ globalThis.SadraNext = {
       const body = el("tbody");
       for (const row of rows) {
         const tr = el("tr");
-        row.cells.forEach((v) => {
+        row.cells.forEach((raw,index) => {
+          const unitIndex=headers.findIndex(h=>/^واحد(?:\s|$)/.test(h)),unitName=unitIndex>=0?row.cells[unitIndex]:null,v=numericCell219(raw,headers[index],unitName);
           const td = el("td");
           td.append(
             v instanceof Node ? v : document.createTextNode(String(v ?? "—")),
@@ -794,6 +832,7 @@ globalThis.SadraNext = {
     }
     const navigation218=[];
     function go(next) {
+      if(route==="operations" && next!==route)forms214?.leave219();
       if(!host.hidden && next!==route)navigation218.push(route);
       syncLegacy();
       route = next;
@@ -904,16 +943,11 @@ globalThis.SadraNext = {
           type: "select",
           items: active("groups").filter((x) => !x.parentId && x.id !== v.id),
         });
-      if (kind === "units")
-        fields.push(
-          text("symbol", "نماد"),
-          ref("dimension", "نوع واحد", null, choices(dims)),
-          text("factor", "ضریب تبدیل به مرجع (وزن: گرم)"),
-          text("reference", "مرجع تبدیل برای واحدهای تعدادی"),
-          text("definition", "تعریف دقیق واحد؛ برای مثقال الزامی"),
-          text("currencyCode", "کد استاندارد ارز (در صورت وجود)"),
-          text("decimals", "تعداد رقم اعشار مجاز", "number", true),
-        );
+      if(kind==="units") {
+        fields[0].label="نام واحد";
+        fields.push(ref("dimension","نوع واحد",null,choices(v.dimension==="currency"?dims:{count:"تعدادی",weight:"وزنی"})));
+        if(v.dimension==="weight")fields.push(text("factor","معادل یک واحد به گرم","text",true));
+      }
       if (kind === "assets") {
         fields[0].label="نام ارز";
         fields.push(text("symbol","کد / نماد ارز"),text("currencyCode","کد استاندارد ارز (مثلاً USD یا IRR)"),text("decimals","دقت اعشاری","number",true));
@@ -987,6 +1021,7 @@ globalThis.SadraNext = {
           "incomeSources",
           "goods",
           "tags",
+          "units",
         ].includes(kind)
       ) {
         fields.push({ key: "tags", label: "برچسب‌ها", type: "tags" });
@@ -1011,7 +1046,8 @@ globalThis.SadraNext = {
             }
           : {}),
         ...(kind === "tags" ? { color: "#287d66" } : {}),
-        ...(["units", "assets"].includes(kind) ? { decimals: "3" } : {}),
+        ...(kind==="units"?{dimension:"count",decimals:0}:{}),
+        ...(kind==="assets"?{decimals:"3"}:{}),
         ...(kind === "assets" ? {nature:"currency"} : {}),
         ...(kind === "incomes" ? { catalogNature: "currency" } : {}),
         ...clone(item || preset),
@@ -1019,7 +1055,7 @@ globalThis.SadraNext = {
       if(kind==="assets" && values.unitId)values.currencyCode=unit(values.unitId)?.currencyCode || "";
       if(kind==="goods") {
         const mode=values.catalogMode==="count"?"count":"weight";
-        values.catalogUnitId ||= values.unitId || active("units").find(u=>u.dimension===mode && (mode==="count"?u.decimals===0:dec(u.factor || "0")===dec("1")))?.id;
+        values.catalogUnitId=ledger.catalogUnit219(values)?.id || "";
         values.catalogRateUnitId ||= values.rateUnitId || values.catalogUnitId;
         values.catalogPieceUnitId ||= active("units").find(u=>u.dimension==="weight" && dec(u.factor || "0")===dec("1"))?.id;
       }
@@ -1197,12 +1233,6 @@ globalThis.SadraNext = {
       form.onsubmit = (e) => {
         e.preventDefault();
         try {
-          if (
-            kind === "units" &&
-            norm(values.name).includes("مثقال") &&
-            !values.definition?.trim()
-          )
-            throw Error("تعریف و نوع مثقال را مشخص کنید");
           if (kind === "goods" && values.mode === "currency")
             values.feeMode = "none";
           if (kind === "bankAccounts")
@@ -1230,6 +1260,11 @@ globalThis.SadraNext = {
       d.showModal();
     }
     function saveCatalog(kind, values) {
+      if(kind==="units") {
+        const old=values.id?ledger.find("units",values.id):null,x={...clone(values),decimals:old?.decimals ?? (values.dimension==="count"?0:8)};
+        if(!old && x.dimension!=="weight"){x.factor=null;x.reference="";}
+        return ledger.put("units",x);
+      }
       if (kind === "goods") {
         const x = clone(values);
         x.name = String(x.name || "").trim();
@@ -1492,11 +1527,7 @@ globalThis.SadraNext = {
                                 : " · کارمزد متغیر " + (x.catalogFeeBasis === "weightPercent" ? "درصدی از وزن فاکتور" : "مبلغ هر عدد") + " در سند"
                               : "")
                           : tab === "units"
-                            ? dims[x.dimension] +
-                              " · ضریب: " +
-                              f(x.factor) +
-                              " · اعشار: " +
-                              f(x.decimals)
+                            ? dims[x.dimension] + (x.dimension==="weight"?" · هر واحد = "+amount219(x.factor,"گرم")+" گرم":"")
                             : tab === "assets"
                               ? (x.nature === "currency" ? "ارزی" : "کالایی") +
                                 " · " +
@@ -2910,7 +2941,7 @@ globalThis.SadraNext = {
       if(kind==="installments") {
         latestHeaders=["قرارداد","طرف حساب","قسط","سررسید شمسی","کالا / ارز","مقدار تعهد","پرداخت‌شده","مانده","واحد"];
         const rows=[...(ledger.s.installmentContracts214 || []).filter(c=>!filter.contractId || c.id===filter.contractId).flatMap(c=>c.dues.map((due,i)=>{const remaining=ledger.installmentRemaining216(c.id,due.id);return [c.title,c.partyName,String(i+1),due.jalali,c.goodName,due.amount,sub(due.amount,remaining),remaining,c.unit.name];})),...(bridge.installments?.() || []).filter(c=>!filter.contractId || c.contract===filter.contractId).map(c=>[c.title,c.party,String(c.number || ""),c.date,name("goods",c.good),String(c.total),sub(c.total,c.remaining),String(c.remaining),c.unit])];
-        latestRows=rows;host.append(table(latestHeaders,rows.map(cells=>({cells:cells.map((v,i)=>[2,5,6,7].includes(i)?f(v):v)}))),bar(btn("چاپ گزارش",printReport)));return;
+        latestRows=rows.map(cells=>cells.map((v,i)=>numericCell219(v,latestHeaders[i],cells[8])));host.append(table(latestHeaders,latestRows.map(cells=>({cells}))),bar(btn("چاپ گزارش",printReport)));return;
       }
       const source=reportData(),funds=new Map(ledger.s.funds.map(f=>[f.id,f])),sums=new Map(),running=new Map();
       let entries=source.entries.filter(e=>{
@@ -2927,8 +2958,8 @@ globalThis.SadraNext = {
         const sumKey=[e.bucket,e.good,e.purity || ""].join("|");sums.set(sumKey,add(sums.get(sumKey) || "0",e.quantity));
         return {item:e,cells:[e.originalDate || (e.date?persianFormatter.format(new Date(e.date+"T12:00:00Z")):"—"),String(d?.invoiceNumber || d?.number || ""),types[e.type] || e.type,accountName(e),g?.name || e.good,e.purity || "—",(dec(e.quantity)>0n?"+":"")+e.quantity,u?.name || "",e.count || "—",after,e.notes || ""]};
       });
-      latestRows=rows.map(r=>r.cells);const totals=card(el("h3","مانده به تفکیک کالا، ارز و واحد"));
-      for(const [key,value]of sums){const [bucket,id,purity]=key.split("|"),g=good(id);totals.append(el("p",(g?.name || id)+" — "+f(value)+" "+name("units",g?.unitId)+(purity?" — عیار "+f(purity):"")+(bucket==="commitment"?" — تعهد":"")));}
+      latestRows=rows.map(r=>r.cells.map((v,i)=>numericCell219(v,latestHeaders[i],r.cells[7])));const totals=card(el("h3","مانده به تفکیک کالا، ارز و واحد"));
+      for(const [key,value]of sums){const [bucket,id,purity]=key.split("|"),g=good(id);totals.append(el("p",(g?.name || id)+" — "+amount219(value,g?.unitId)+" "+name("units",g?.unitId)+(purity?" — عیار "+f(purity):"")+(bucket==="commitment"?" — تعهد":"")));}
       host.append(totals,bar(btn("چاپ گزارش",printReport),el("span",f(rows.length)+" ردیف")));
       const max=Math.max(0,Math.ceil(rows.length/50)-1);page=Math.min(page,max);
       host.append(table(latestHeaders,rows.slice(page*50,(page+1)*50).map(r=>({...r,cells:r.cells.map((v,i)=>[1,5,6,8,9].includes(i)?f(v):v)})),e=>btn("نمایش سند",()=>{const d=source.docs.get(e.document);d?.archive?showArchive(d):showDocument(e.document);})),bar(btn("صفحه قبل",()=>{page=Math.max(0,page-1);render();}),el("span",f(page+1)+" / "+f(max+1)),btn("صفحه بعد",()=>{page=Math.min(max,page+1);render();})));
@@ -2972,6 +3003,7 @@ globalThis.SadraNext = {
         for (const v of row) {
           const td = d.createElement("td");
           td.textContent = String(v ?? "");
+          if(/[\u2066+−-]/.test(String(v))){td.style.unicodeBidi="isolate";}
           tr.append(td);
         }
         body.append(tr);
@@ -3255,6 +3287,7 @@ globalThis.SadraNext = {
           event.stopImmediatePropagation();
           go(next);
         } else {
+          if(route==="operations")forms214?.leave219();
           document.body.classList.remove("next204-active");
           host.hidden = true;
         }
@@ -3349,9 +3382,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۸";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۹";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۸";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۹";
     });
     const api = {
       escape218(){
@@ -3418,7 +3451,7 @@ globalThis.SadraNext = {
       return e.type !== "legacy";
     }
     forms214 = SadraForms214.create({
-      el,btn,field,select,input,bar,card,table,f,name,host,legacyDate,
+      el,btn,field,select,input,bar,card,table,f,name,host,legacyDate,amount219,
       ledger:()=>ledger,raw,openEditor:edit,rerender:render,message,
       needsReview:()=>migrationNotice,
       showDocument,
