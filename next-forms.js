@@ -290,7 +290,7 @@ globalThis.SadraForms214 = {
               invoice=ledger().deleteInvoiceRow218(invoice.id,r.id,true);selected218=Math.max(0,Math.min(selected218,invoice.rows.length-1));invoiceRow=freshInvoiceRow216();rowOpen218=false;invoiceFocus="invoice218-row-"+selected218;rerender();
             }catch(e){env.message(e.message,true);}
           },"danger");edit.disabled=remove.disabled=!unlocked218;
-          return bar(...(r.documentId?[btn("نمایش ثبت مالی",()=>env.showDocument(r.documentId,{readOnly:!unlocked218}))]:[]),edit,remove);
+          return bar(edit,remove);
         });
         listing.classList.add("invoice218-rowlist");
         const rowNodes=[...listing.querySelectorAll("tbody tr")];
@@ -308,23 +308,20 @@ globalThis.SadraForms214 = {
       const d=ledger().s.documents.find(d=>d.id===r.documentId),principal=d?.entries.find(e=>e.account===invoice.partyId && e.component!=="fee"),direction=principal?(dec(principal.quantity)<0n?-1n:1n):(r.operation==="receive"?-1n:1n);
       const snapshot=d?.snapshots?.[r.good || d.good];
       const fees=r.feeDetails || (d?.fees || []).map(fee=>({...fee,mode:"",basis:fee.basis || (fee.kind==="gold"?"weightPercent":"perPiece"),value:fee.value || fee.percent || fee.perUnit,unitName:d.snapshots?.[fee.good]?.unit?.name || "",signedQuantity:d.entries.find(e=>e.component==="fee" && e.good===fee.good)?.quantity || fee.quantity}));
-      return {amount:r.signedAmount ?? str(dec(r.amount)*direction),count:r.signedCount ?? (r.count?str(dec(r.count)*direction):""),purity:r.purity ?? snapshot?.purity ?? "",unit:r.unitId?name("units",r.unitId):snapshot?.unit?.name || name("assets",r.assetId),fees};
+      return {amount:principal?str(dec(r.amount)*direction):r.signedAmount ?? str(dec(r.amount)*direction),count:r.count?str(dec(r.count)*direction):"",purity:r.purity ?? snapshot?.purity ?? "",unit:r.unitId?name("units",r.unitId):snapshot?.unit?.name || name("assets",r.assetId),fees};
     }
     function signed218(value,unit=null) {return amount219(value,unit,true);}
     function feeText218(fees) {return fees.map(fee=>(fee.mode==="fixed"?"ثابت":fee.mode==="variable"?"متغیر":"کارمزد")+"؛ "+(fee.basis==="weightPercent"?f(fee.value)+"٪ از وزن":f(fee.value)+" ریال برای هر عدد")+"؛ جمع: "+signed218(fee.signedQuantity || fee.quantity,fee.unitId || fee.unitName)+" "+fee.unitName).join(" | ") || "—";}
     function partyTitle218(row) {if(row.partyKind!=="installments")return name(["banks","funds"].includes(row.partyKind)?"funds":row.partyKind,row.partyId);const c=ledger().s.installmentContracts214?.find(c=>c.id===row.contractId),i=c?.dues.findIndex(d=>d.id===row.dueId);return c?c.title+" — قسط "+f(i+1):"اقساط";}
     function rowCells218(r,i) {const meta=rowMetadata218(r);return [f(i+1),r.operation==="receive"?"دریافت":"پرداخت",r.assetName,f(meta.purity),partyTitle218(r),signed218(meta.amount,r.unitId || meta.unit),meta.unit,signed218(meta.count),feeText218(meta.fees),(r.tags || []).map(id=>name("tags",id)).join("، "),r.notes];}
     function invoiceAccount219() {
-      const buckets={people:["person"],expenses:["expense"],incomes:["income"],banks:["stock","commitment"],funds:["stock","commitment"]}[invoice.partyKind] || [];
-      const current=new Map(),effect=new Map(),meta=new Map();
+      const current=new Map(),effect=new Map(),meta=new Map(),all=ledger().entries();
       const ids=new Set((invoice.rows || []).map(r=>r.documentId).filter(id=>id && !ledger().s.documents.some(d=>d.reversalOf===id)));
-      for(const e of ledger().entries().filter(e=>e.account===invoice.partyId && buckets.includes(e.bucket))) {
-        const key=[e.good,e.purity || "",e.bucket].join("|");current.set(key,add(current.get(key) || "0",e.quantity));
-        const snap=e.snapshot || ledger().s.goods.find(g=>g.id===e.good),unit=snap?.unit || ledger().s.units.find(u=>u.id===snap?.unitId);
-        meta.set(key,{name:snap?.name || e.good,unit,purity:e.purity || "",bucket:e.bucket});
-        if(ids.has(e.document))effect.set(key,add(effect.get(key) || "0",e.quantity));
-      }
-      return {current,effect,meta,keys:[...new Set([...current.keys(),...effect.keys()])]};
+      const groups=ledger().accountBalances220(invoice.partyKind,invoice.partyId,all),changes=ledger().accountBalances220(invoice.partyKind,invoice.partyId,all.filter(e=>ids.has(e.document)));
+      for(const g of groups){current.set(g.key,g.quantity);meta.set(g.key,g);}
+      for(const g of changes){effect.set(g.key,g.quantity);meta.set(g.key,{...(meta.get(g.key) || g)});}
+      const before=ledger().accountBalances220(invoice.partyKind,invoice.partyId,all.filter(e=>!ids.has(e.document)));
+      return {current,effect,meta,groups,changes,before,keys:[...new Set([...current.keys(),...effect.keys()])]};
     }
     function invoiceBalances218() {
       const panel=el("section",null,"invoice219-balances");panel.id="invoice218-balances";
@@ -340,37 +337,29 @@ globalThis.SadraForms214 = {
           item.append(el("strong",meta.name),number,el("span",meta.unit?.name || ""));
           if(meta.purity)item.append(el("small","عیار "+f(meta.purity)));
           if(meta.bucket==="commitment")item.append(el("small","تعهد؛ جدا از موجودی"));
-          item.append(el("span",dec(value)>0n?"بدهکار":"طلبکار",dec(value)>0n?"invoice219-debit":"invoice219-credit"));cards.append(item);
+          item.append(el("span",ledger().label220(value,meta.bucket),meta.bucket!=="stock" && dec(value)>0n?"invoice219-debit":"invoice219-credit"));
+          const source=id==="invoice218-before"?data.before:id==="invoice219-effect"?data.changes:data.groups;
+          item.append(btn("جزئیات",()=>env.showBalance220(source.find(g=>g.key===key) || {...meta,quantity:value,details:[]})));cards.append(item);
         }
         if(!cards.children.length)cards.append(el("p","بدون مانده"));block.append(cards);panel.append(block);
       }
       panel.append(el("small","مثبت: بدهکار؛ منفی: طلبکار. ماندهٔ قبل، ماندهٔ حساب بدون اثر این فاکتور است.","n-muted"));host.append(panel);
     }
     function invoiceTotals219(listing,rows) {
-      const groups=new Map(),fees=new Map(),hBuckets={people:["person"],expenses:["expense"],incomes:["income"],banks:["stock","commitment"],funds:["stock","commitment"]}[invoice.partyKind] || [];
-      for(const r of rows) {
-        const d=ledger().s.documents.find(d=>d.id===r.documentId);if(!d || ledger().s.documents.some(x=>x.reversalOf===d.id))continue;
-        const meta=rowMetadata218(r),principal=d.entries.find(e=>e.account===invoice.partyId && e.component!=="fee"),g=d.snapshots?.[r.good || d.good];if(!g)continue;
-        const unit=ledger().s.units.find(u=>u.id===r.unitId) || g.unit || ledger().s.units.find(u=>u.id===g.unitId),key=[g.id,meta.purity,unit?.id].join("|");
-        const group=groups.get(key) || {good:g.id,name:g.name,purity:meta.purity,unit,quantity:"0",count:"0",hasCount:false,baseUnitId:g.unitId};
-        const delta=principal?ledger().convert(principal.quantity,g.unitId,unit.id):meta.amount;group.quantity=add(group.quantity,delta);
-        if(meta.count!==""){group.hasCount=true;group.count=add(group.count,meta.count);}groups.set(key,group);
-        for(const fee of meta.fees){const k=[fee.good,fee.unitId || fee.unitName,fee.basis].join("|"),item=fees.get(k) || {...fee,total:"0"};item.total=add(item.total,fee.signedQuantity || fee.quantity);fees.set(k,item);}
-      }
+      const ids=new Set(rows.map(r=>r.documentId).filter(id=>id && !ledger().s.documents.some(d=>d.reversalOf===id))),all=ledger().entries();
+      const changes=ledger().accountBalances220(invoice.partyKind,invoice.partyId,all.filter(e=>ids.has(e.document))),current=ledger().accountBalances220(invoice.partyKind,invoice.partyId,all);
       const foot=el("tfoot");foot.id="invoice219-totals";
       function append(label,g,quantity,count,fee="") {
         const tr=el("tr");tr.className="invoice219-total";
-        const cells=[label,"",g.name || "",f(g.purity),"",quantity,g.unit?.name || "",count,fee,"","",""];
-        for(const value of cells)tr.append(el("td",value));foot.append(tr);
+        for(const value of [label,"",g.name || "",f(g.purity),"",quantity,g.unit?.name || "",count,fee,"",""])tr.append(el("td",value));foot.append(tr);
       }
-      for(const g of groups.values()) {
-        append("جمع عملیات فاکتور",g,signed218(g.quantity,g.unit),g.hasCount?signed218(g.count):"—");
-        const balance=ledger().entries().filter(e=>e.account===invoice.partyId && hBuckets.includes(e.bucket) && e.good===g.good && (e.purity || "")===g.purity).reduce((n,e)=>add(n,e.quantity),"0");
-        const runtime=ledger().s.goods.find(x=>x.id===g.good);let count="—";
-        if(runtime?.mode==="count")count=signed218(balance);
-        else if(runtime?.standardWeight){const pieces=ledger().entries().filter(e=>e.account===invoice.partyId && hBuckets.includes(e.bucket) && e.good===g.good && e.component!=="fee").reduce((n,e)=>add(n,e.quantity),"0");count=signed218(div(ledger().convert(pieces,runtime.unitId,runtime.standardWeightUnitId),runtime.standardWeight));}
-        append("ماندهٔ نهایی طرف حساب",g,signed218(ledger().convert(balance,g.baseUnitId,g.unit.id),g.unit),count);
+      for(const group of changes) {
+        append("اثر فاکتور",group,signed218(group.quantity,group.unit),group.kind==="count"?signed218(group.count):"—");
+        const balance=current.find(g=>g.key===group.key);
+        if(balance)append("ماندهٔ نهایی — "+ledger().label220(balance.quantity,balance.bucket),balance,signed218(balance.quantity,balance.unit),balance.kind==="count"?signed218(balance.count):"—");
       }
+      const fees=new Map();
+      for(const r of rows)for(const fee of rowMetadata218(r).fees){const key=[fee.good,fee.unitId || fee.unitName,fee.basis].join("|"),value=fees.get(key) || {...fee,total:"0"};value.total=add(value.total,fee.signedQuantity || fee.quantity);fees.set(key,value);}
       for(const fee of fees.values())append("جمع کارمزد",{name:name("goods",fee.good),unit:ledger().s.units.find(u=>u.id===fee.unitId) || {name:fee.unitName}},"","",signed218(fee.total,fee.unitId || fee.unitName)+" "+fee.unitName);
       listing.querySelector("table")?.append(foot);
     }

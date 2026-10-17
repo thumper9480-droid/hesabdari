@@ -16,7 +16,7 @@ globalThis.SadraNext = {
       assets: "معرفی ارزها",
       operations: "ثبت فاکتور",
       installments: "اقساط",
-      inventory: "موجودی و گردش کالا",
+      inventory: "گزارش موجودی",
       accounts: "حساب اشخاص",
       reports: "گزارش‌های جامع",
       settings: "تنظیمات و سوابق",
@@ -970,6 +970,7 @@ globalThis.SadraNext = {
         fields.push(ref("catalogUnitId","واحد پیش‌فرض مقدار",null,compatible));
         fields.push(ref("catalogRateUnitId","واحد مبنای نرخ",null,compatible.filter(u=>dimension==="weight" || !v.catalogUnitId || u.id===v.catalogUnitId)));
         if (v.catalogMode==="weightCount")fields.push(ref("catalogPieceUnitId","واحد وزن هر قطعه",null,active("units").filter(u=>u.dimension==="weight")));
+        if(["weight","weightCount"].includes(v.catalogMode))fields.push(text("balanceMaterial220","جنس دارایی (مانند طلا یا نقره)","text",true));
         if (["weight", "weightCount","count"].includes(v.catalogMode))
           fields.push(text("catalogPurity", v.catalogMode==="count"?"عیار (در صورت داشتن)":"عیار", "text", v.catalogMode!=="count"));
         if (v.catalogMode === "weightCount")
@@ -1054,6 +1055,7 @@ globalThis.SadraNext = {
       };
       if(kind==="assets" && values.unitId)values.currencyCode=unit(values.unitId)?.currencyCode || "";
       if(kind==="goods") {
+        if(!values.balanceMaterial220 && values.metal && values.metal!=="عیاردار")values.balanceMaterial220=values.metal;
         const mode=values.catalogMode==="count"?"count":"weight";
         values.catalogUnitId=ledger.catalogUnit219(values)?.id || "";
         values.catalogRateUnitId ||= values.rateUnitId || values.catalogUnitId;
@@ -1277,6 +1279,12 @@ globalThis.SadraNext = {
             (g) => g.id === x.id && g.groupId === x.groupId,
           ),
         );
+        if(["weight","weightCount"].includes(x.catalogMode)) {
+          const previous=ledger.s.goods.find(g=>g.id===x.id),material=previous?.balanceMaterial220 || (previous?.metal!=="عیاردار"?previous?.metal:"");
+          x.balanceMaterial220=String(x.balanceMaterial220 || material || "").trim();
+          if(!x.balanceMaterial220)throw Error("جنس دارایی را برای تفکیک طلا، نقره و سایر دارایی‌ها مشخص کنید");
+          if(previous && material && ledger.used("goods",x.id) && norm(material)!==norm(x.balanceMaterial220))throw Error("جنس کالای دارای سابقه متفاوت است؛ کالای تازه معرفی کنید");
+        }
         if (!["count", "weight", "weightCount"].includes(x.catalogMode))
           throw Error("نوع کالا را انتخاب کنید");
         if (
@@ -2177,6 +2185,20 @@ globalThis.SadraNext = {
         ),
       );
     }
+    function showBalance220(group) {
+      const dialog=el("dialog");dialog.className="balance220-dialog";
+      dialog.append(el("h3",group.name),el("p",amount219(group.quantity,group.unit,true)+" "+group.unit.name+" — "+ledger.label220(group.quantity,group.bucket)));
+      dialog.append(table(["کالا / ارز","بانک / صندوق / طرف حساب","وزن / مقدار","واحد","تعداد","عیار","شناسه محموله","نشان / انگ","جزء"],group.details.map(d=>({cells:[d.name,name(group.bucket==="person"?"people":group.bucket==="expense"?"expenses":group.bucket==="income"?"incomes":"funds",d.account),amount219(d.quantity,d.unit,true),d.unit.name,d.hasCount?amount219(d.count):"—",f(d.purity),d.lot || "—",[d.mark,d.assay].filter(Boolean).join(" / ") || "—",d.component==="fee"?"کارمزد":"اصل دارایی"]}))));
+      if(group.unclassified)dialog.append(el("p","برای تجمیع با کالاهای دیگر، جنس این دارایی را در معرفی کالا مشخص کنید.","n-notice"));
+      dialog.append(btn("بستن",()=>dialog.close()));host.append(dialog);dialog.onclose=()=>dialog.remove();dialog.showModal();
+    }
+    function balanceSummary220(entries,title,byAccount=false,id="") {
+      const groups=ledger.aggregate220(entries,byAccount).filter(g=>dec(g.quantity)!==0n),block=card(el("h3",title));if(id)block.id=id;
+      if(!groups.length){block.append(el("p",entries.length?"ماندهٔ این انتخاب تسویه است.":"گردشی برای این انتخاب ثبت نشده است.","n-muted"));return block;}
+      block.append(table([...(byAccount?["طرف حساب"]:[]),"مبنای مانده","عیار","مانده","واحد","وضعیت"],groups.map(g=>({item:g,cells:[...(byAccount?[name(g.bucket==="person"?"people":g.bucket==="expense"?"expenses":g.bucket==="income"?"incomes":"funds",g.account)]:[]),g.name,f(g.purity),amount219(g.quantity,g.unit,true),g.unit.name,ledger.label220(g.quantity,g.bucket)]})),g=>btn("جزئیات",()=>showBalance220(g))));
+      if(groups.some(g=>g.unclassified))block.append(el("p","داراییِ بدون جنس مشخص، برای جلوگیری از اختلاط طلا و نقره جدا نمایش داده می‌شود؛ جنس آن را در معرفی کالا تعیین کنید.","n-notice"));
+      return block;
+    }
     function showDocument(id,options={}) {
       if (!id) return;
       const d = ledger.find("documents", id),
@@ -2193,30 +2215,11 @@ globalThis.SadraNext = {
             "برگشت سند " + f(ledger.find("documents", d.reversalOf).number),
           ),
         );
-      dialog.append(
-        table(
-          ["دفتر", "حساب", "کالا / دارایی", "مقدار", "واحد", "عیار", "جزء", "برچسب سطر"],
-          d.entries.map((e) => ({
-            cells: [
-              {
-                stock: "موجودی",
-                commitment: "تعهد بانک و صندوق",
-                person: "حساب شخص",
-                expense: "هزینه",
-                income: "درآمد",
-              }[e.bucket],
-              accountName(e),
-              d.snapshots[e.good]?.name || name("goods", e.good),
-              f(e.quantity),
-              d.snapshots[e.good]?.unit?.name ||
-                name("units", good(e.good)?.unitId),
-              f(e.purity),
-              e.component || "—",
-              tags(e.lineTags),
-            ],
-          })),
-        ),
-      );
+      const entries=d.entries.map(e=>({...e,document:d.id,snapshot:d.snapshots?.[e.good]}));
+      dialog.append(table(["دفتر","حساب","کالا / دارایی","مبنای مانده","مقدار","واحد","تعداد","عیار","وضعیت","جزء"],entries.map(e=>{const normalized=ledger.describeEntry220(e);return {cells:[{stock:"موجودی",commitment:"تعهد",person:"حساب شخص",expense:"هزینه",income:"درآمد"}[e.bucket],accountName(e),d.snapshots[e.good]?.name || name("goods",e.good),normalized.name,amount219(normalized.quantity,normalized.unit,true),normalized.unit.name,normalized.count!==null?amount219(normalized.count):"—",f(normalized.purity),ledger.label220(normalized.quantity,e.bucket),e.component==="fee"?"کارمزد":"اصل"]};})));
+      dialog.append(balanceSummary220(entries,"اثر این سند بر حساب‌ها",true));
+      const affected=new Set(entries.map(e=>e.bucket+"|"+e.account));
+      dialog.append(balanceSummary220(ledger.entries().filter(e=>affected.has(e.bucket+"|"+e.account)),"ماندهٔ نهایی حساب‌های این سند",true));
       if (d.unroundedBase && d.unroundedBase !== d.baseAmount)
         dialog.append(
           el(
@@ -2377,308 +2380,26 @@ globalThis.SadraNext = {
       d.showModal();
     }
     function inventory() {
-      const controls = el("div", null, "n-filters n-bar");
-      for (const [key, kind, label] of [
-        ["good", "goods", "همهٔ کالاها"],
-        ["fund", "funds", "همهٔ صندوق‌ها"],
-        ["group", "groups", "همهٔ گروه‌ها"],
-        ["location", "locations", "همهٔ محل‌ها"],
-        ["fundType", "fundTypes", "همهٔ انواع صندوق"],
-      ]) {
-        const s = select(fieldOptions(kind, true), filter[key], label);
-        s.onchange = () => {
-          filter[key] = s.value;
-          render();
-        };
-        controls.append(s);
+      const controls=el("div",null,"n-grid");controls.id="inventory220-controls";
+      const addFilter=(key,title,items,blank)=>{const c=select(items,filter[key] || "",blank);c.id="inventory220-"+key;c.onchange=()=>{filter[key]=c.value;render();};controls.append(field(title,c));};
+      addFilter("kind","نوع موجودی",choices({currency:"ارز",count:"کالای تعدادی",weightCount:"کالای وزنی–تعدادی",weight:"کالای وزنی"}),"همهٔ موجودی‌ها");
+      addFilter("fund","بانک / حساب / صندوق",ledger.s.funds.map(f=>({id:f.id,name:f.name+(f.active===false?" (غیرفعال)":"")})),"همهٔ بانک‌ها و صندوق‌ها");
+      const physical=ledger.entries().filter(e=>e.bucket==="stock" && (!filter.fund || e.account===filter.fund));
+      const eligible=physical.filter(e=>{const value=ledger.describeEntry220(e);return !filter.kind || (filter.kind==="weightCount"?value.countedWeight:filter.kind==="weight"?value.kind==="weight" && !value.countedWeight:value.kind===filter.kind);});
+      const materials=[...new Set(eligible.map(e=>ledger.describeEntry220(e).material).filter(Boolean))];
+      addFilter("material","جنس دارایی",materials.map(id=>({id,name:id})),"همهٔ دارایی‌ها");
+      const purities=[...new Set(eligible.map(e=>ledger.describeEntry220(e).purity).filter(Boolean))];
+      addFilter("purity","عیار",purities.map(id=>({id,name:id})),"همهٔ عیارها");host.append(card(controls));
+      const entries=eligible.filter(e=>{const value=ledger.describeEntry220(e);return (!filter.material || value.material===filter.material) && (!filter.purity || value.purity===filter.purity);});
+      host.append(el("p","این گزارش فقط موجودی واقعی بانک‌ها و صندوق‌هاست؛ طلب، بدهی و تعهد کارمزد در موجودی وارد نمی‌شوند.","n-muted"));
+      for(const [kind,title]of [["count","موجودی کالاهای تعدادی"],["weight","موجودی وزنی به تفکیک دارایی و عیار"],["currency","موجودی ارزها"]]) {
+        const source=entries.filter(e=>ledger.describeEntry220(e).kind===kind);
+        if(!source.length)continue;
+        host.append(balanceSummary220(source,title,false,"inventory220-"+kind));
+        const details=ledger.aggregate220(source).flatMap(g=>g.details.filter(d=>dec(d.quantity)!==0n).map(d=>({cells:[g.name,d.name,name("funds",d.account),d.countedWeight?"وزنی–تعدادی":d.kind==="weight"?"وزنی":d.kind==="count"?"تعدادی":"ارزی",amount219(d.quantity,d.unit),d.unit.name,d.hasCount?amount219(d.count):"—",f(d.purity),d.lot || "—",[d.mark,d.assay].filter(Boolean).join(" / ") || "—"]})));
+        host.append(card(el("h4","جزئیات "+title),table(["دسته دارایی","نام کالا / ارز","بانک / حساب / صندوق","نوع کالا","موجودی واقعی","واحد","تعداد","عیار","محموله","نشان / انگ"],details)));
       }
-      const dimension = select(choices(modes), filter.mode, "همهٔ ماهیت‌ها");
-      dimension.onchange = () => {
-        filter.mode = dimension.value;
-        render();
-      };
-      controls.append(dimension);
-      const purityFilter = input(filter.purity || "");
-      purityFilter.placeholder = "فیلتر عیار";
-      purityFilter.onchange = () => {
-        filter.purity = purityFilter.value;
-        render();
-      };
-      controls.append(purityFilter);
-      host.append(controls, bar(btn("ثبت نرخ ارزش‌گذاری", valuationForm)));
-      const grouped = new Map();
-      for (const e of ledger.entries().filter((e) => e.bucket === "stock")) {
-        const g = good(e.good),
-          fund = ledger.s.funds.find((f) => f.id === e.account);
-        if (
-          !g ||
-          !fund ||
-          (filter.good && g.id !== filter.good) ||
-          (filter.fund && fund.id !== filter.fund) ||
-          (filter.group && g.groupId !== filter.group) ||
-          (filter.location && fund.locationId !== filter.location) ||
-          (filter.fundType && fund.typeId !== filter.fundType) ||
-          (filter.mode && g.mode !== filter.mode) ||
-          (filter.purity && e.purity !== filter.purity)
-        )
-          continue;
-        const key = [e.account, e.good, e.purity || "", e.lot || ""].join("|"),
-          x = grouped.get(key) || {
-            ...e,
-            quantity: "0",
-            opening: "0",
-            inbound: "0",
-            outbound: "0",
-            pieceCount: "0",
-            unknownCount: false,
-          };
-        if (["opening", "legacy"].includes(e.type))
-          x.opening = add(x.opening, e.quantity);
-        else if (dec(e.quantity) > 0n) x.inbound = add(x.inbound, e.quantity);
-        else x.outbound = add(x.outbound, sub("0", e.quantity));
-        if (e.count) x.pieceCount = add(x.pieceCount, e.count);
-        else if (g.mode === "weight") x.unknownCount = true;
-        x.quantity = add(x.quantity, e.quantity);
-        grouped.set(key, x);
-      }
-      let equivalent = "0",
-        actualGold = "0";
-      const rows = [...grouped.values()]
-        .filter((e) => dec(e.quantity) !== 0n)
-        .map((e) => {
-          const g = good(e.good),
-            u = unit(g.unitId);
-          let eq = "—";
-          if (
-            g.metal === "طلا" &&
-            u.dimension === "weight" &&
-            u.factor &&
-            e.purity
-          ) {
-            if (!e.legacyNormalized)
-              actualGold = add(actualGold, mul(e.quantity, u.factor));
-            eq = ledger.equivalent(mul(e.quantity, u.factor), e.purity);
-            equivalent = add(equivalent, eq);
-          }
-          const r = ledger.s.reservations
-            .filter((x) => x.fund === e.account && x.good === g.id)
-            .reduce((n, x) => n + dec(x.quantity), 0n);
-          return {
-            item: e,
-            cells: [
-              g.name,
-              name("funds", e.account),
-              name("locations", ledger.find("funds", e.account).locationId),
-              f(e.quantity),
-              f(e.opening),
-              f(e.inbound),
-              f(e.outbound),
-              g.mode === "count"
-                ? f(e.quantity)
-                : f(e.pieceCount) +
-                  (e.unknownCount ? " (ناقص / ثبت نشده)" : ""),
-              u.name + (e.legacyNormalized ? " (معادل ۷۵۰، انتقالی)" : ""),
-              f(e.purity),
-              f(eq),
-              e.mark || "—",
-              e.assay || "—",
-              f(str(r)),
-              f(ledger.available(e.account, g.id)),
-            ],
-          };
-        });
-      host.append(
-        el(
-          "p",
-          "وزن معادل فقط گزارش مقایسه‌ای است و تعهد واقعی را تغییر نمی‌دهد. رزرو و موجودی قابل استفاده در سطح مجموع «صندوق و کالا» نمایش داده می‌شوند و نباید میان ردیف محموله‌ها دوباره جمع شوند.",
-          "n-notice",
-        ),
-      );
-      host.append(
-        card(
-          el(
-            "p",
-            "جمع وزن واقعی طلای جدید (به‌جز مانده‌های معادل انتقالی): " +
-              f(actualGold) +
-              " گرم",
-          ),
-          el(
-            "h3",
-            "معادل طلای فیلترشده با عیار " +
-              f(ledger.s.basePurity) +
-              ": " +
-              f(equivalent) +
-              " گرم",
-          ),
-          table(
-            [
-              "کالا",
-              "صندوق",
-              "محل",
-              "موجودی ثبت‌شده",
-              "افتتاحیه",
-              "مجموع ورود",
-              "مجموع خروج",
-              "تعداد قطعات",
-              "واحد",
-              "عیار",
-              "معادل مبنا (گرم)",
-              "ری‌گیری",
-              "مرکز",
-              "رزرو کل صندوق/کالا",
-              "قابل استفاده کل صندوق/کالا",
-            ],
-            rows,
-            (e) =>
-              bar(
-                btn("گردش کالا", () => {
-                  go("reports");
-                  filter.good = e.good;
-                  filter.fund = e.account;
-                  filter.bucket = "stock";
-                  render();
-                }),
-                btn("ثبت شمارش واقعی / اصلاح", () => {
-                  const actual = prompt(
-                    "موجودی واقعی همین محموله / کالا (واحد: " +
-                      name("units", good(e.good).unitId) +
-                      ")",
-                    e.quantity,
-                  );
-                  if (actual === null) return;
-                  const reason = prompt("علت مغایرت:");
-                  if (reason) {
-                    ledger.reconcile({
-                      token: uid(),
-                      fund: e.account,
-                      good: e.good,
-                      lot: e.lot,
-                      actual,
-                      notes: reason,
-                      purity: e.purity,
-                    });
-                    render();
-                  }
-                }),
-              ),
-          ),
-        ),
-      );
-      const valuations = [],
-        valueTotals = new Map();
-      let missingRates = 0;
-      for (const e of [...grouped.values()].filter(
-        (e) => dec(e.quantity) !== 0n,
-      )) {
-        const g = good(e.good),
-          u = unit(g.unitId),
-          rate = (ledger.s.valuations || [])
-            .filter((r) => r.good === g.id)
-            .sort((a, b) => a.at.localeCompare(b.at))
-            .at(-1);
-        if (!rate) {
-          missingRates++;
-          valuations.push({
-            cells: [
-              g.name,
-              name("funds", e.account),
-              "نرخ ثبت نشده",
-              "—",
-              "—",
-              "—",
-              "—",
-            ],
-          });
-          continue;
-        }
-        let quantity = e.quantity;
-        if (rate.basis === "basePurity") {
-          if (
-            g.metal !== "طلا" ||
-            g.mode !== "weight" ||
-            !e.purity ||
-            !u.factor
-          ) {
-            missingRates++;
-            continue;
-          }
-          quantity = ledger.equivalent(
-            mul(e.quantity, u.factor),
-            e.purity,
-            rate.basePurity,
-          );
-        }
-        const value = mul(quantity, rate.rate),
-          key = rate.quoteGood;
-        valueTotals.set(key, add(valueTotals.get(key) || "0", value));
-        valuations.push({
-          cells: [
-            g.name,
-            name("funds", e.account),
-            f(value),
-            name("goods", key),
-            rate.source,
-            rate.at,
-            rate.basis === "basePurity"
-              ? "گرم طلای عیار " + f(rate.basePurity)
-              : "هر " + u.name,
-          ],
-        });
-      }
-      host.append(
-        card(
-          el("h3", "ارزش‌گذاری با نرخ‌های ثبت‌شده"),
-          el(
-            "p",
-            missingRates
-              ? "ارزش کل کامل نیست؛ برای " +
-                  f(missingRates) +
-                  " ردیف نرخ معتبر ثبت نشده است."
-              : "ارزش‌ها به تفکیک ارز گزارش محاسبه شده‌اند.",
-            "n-muted",
-          ),
-          table(
-            [
-              "کالا",
-              "صندوق",
-              "ارزش",
-              "ارز گزارش",
-              "منبع نرخ",
-              "زمان نرخ",
-              "مبنای نرخ",
-            ],
-            valuations,
-          ),
-          ...[...valueTotals].map(([id, v]) =>
-            el("p", "جمع اقلام دارای نرخ: " + f(v) + " " + name("goods", id)),
-          ),
-        ),
-      );
-      const trades = ledger.s.documents.filter(
-        (d) =>
-          ["buy", "sell"].includes(d.type) &&
-          !ledger.s.documents.some((x) => x.reversalOf === d.id) &&
-          (!filter.good || d.good === filter.good),
-      );
-      host.append(
-        card(
-          el("h3", "تعهدات دریافت و تحویل؛ جدا از موجودی فیزیکی"),
-          table(
-            ["سند", "شخص", "کالا", "در انتظار دریافت (+) / تحویل (−)", "واحد"],
-            trades.map((d) => ({
-              item: d,
-              cells: [
-                f(d.number),
-                name("people", d.person),
-                name("goods", d.good),
-                f(ledger.remaining(d.id)),
-                d.snapshots[d.good]?.unit?.name,
-              ],
-            })),
-            (d) => btn("سند", () => showDocument(d.id)),
-          ),
-        ),
-      );
+      if(!entries.length)host.append(el("p","موجودی برای این انتخاب ثبت نشده است.","n-notice"));
     }
     function accounts() {
       const group = select(
@@ -2943,26 +2664,21 @@ globalThis.SadraNext = {
         const rows=[...(ledger.s.installmentContracts214 || []).filter(c=>!filter.contractId || c.id===filter.contractId).flatMap(c=>c.dues.map((due,i)=>{const remaining=ledger.installmentRemaining216(c.id,due.id);return [c.title,c.partyName,String(i+1),due.jalali,c.goodName,due.amount,sub(due.amount,remaining),remaining,c.unit.name];})),...(bridge.installments?.() || []).filter(c=>!filter.contractId || c.contract===filter.contractId).map(c=>[c.title,c.party,String(c.number || ""),c.date,name("goods",c.good),String(c.total),sub(c.total,c.remaining),String(c.remaining),c.unit])];
         latestRows=rows.map(cells=>cells.map((v,i)=>numericCell219(v,latestHeaders[i],cells[8])));host.append(table(latestHeaders,latestRows.map(cells=>({cells}))),bar(btn("چاپ گزارش",printReport)));return;
       }
-      const source=reportData(),funds=new Map(ledger.s.funds.map(f=>[f.id,f])),sums=new Map(),running=new Map();
-      let entries=source.entries.filter(e=>{
+      const source=reportData(),funds=new Map(ledger.s.funds.map(f=>[f.id,f])),running=new Map();
+      const entries=source.entries.filter(e=>{
         if(kind==="banks"){const a=funds.get(e.account);return ["stock","commitment"].includes(e.bucket) && a?.legacyKind==="banks" && (!filter.bankId || a.bankId===filter.bankId) && (!filter.accountId || a.id===filter.accountId);}
         if(kind==="funds")return ["stock","commitment"].includes(e.bucket) && funds.get(e.account)?.legacyKind!=="banks" && funds.has(e.account) && (!filter.partyId || e.account===filter.partyId);
         const bucket={people:"person",expenses:"expense",incomes:"income"}[kind];if(e.bucket!==bucket || (filter.partyId && e.account!==filter.partyId))return false;
-        const entity=ledger.s[kind].find(x=>x.id===e.account) || e.accountSnapshot;
-        return !filter.groupId || entity?.groupId===filter.groupId;
+        const entity=ledger.s[kind].find(x=>x.id===e.account) || e.accountSnapshot;return !filter.groupId || entity?.groupId===filter.groupId;
       }).sort((a,b)=>(a.date || "").localeCompare(b.date || "") || String(a.at).localeCompare(String(b.at)));
-      latestHeaders=["تاریخ","شماره فاکتور","عملیات","طرف حساب","کالا / ارز","عیار","مقدار (+ بدهکار / − بستانکار)","واحد","تعداد","مانده","توضیحات"];
+      latestHeaders=["تاریخ","شماره فاکتور","عملیات","طرف حساب","کالا / ارز سطر","مبنای مانده","عیار","مقدار","واحد","تعداد","مانده","وضعیت مانده","توضیحات"];
       const rows=entries.map(e=>{
-        const d=source.docs.get(e.document),g=e.snapshot || good(e.good),u=g?.unit || unit(g?.unitId),key=[e.bucket,e.account,e.good,e.purity || ""].join("|");
-        const after=add(running.get(key) || "0",e.quantity);running.set(key,after);
-        const sumKey=[e.bucket,e.good,e.purity || ""].join("|");sums.set(sumKey,add(sums.get(sumKey) || "0",e.quantity));
-        return {item:e,cells:[e.originalDate || (e.date?persianFormatter.format(new Date(e.date+"T12:00:00Z")):"—"),String(d?.invoiceNumber || d?.number || ""),types[e.type] || e.type,accountName(e),g?.name || e.good,e.purity || "—",(dec(e.quantity)>0n?"+":"")+e.quantity,u?.name || "",e.count || "—",after,e.notes || ""]};
+        const d=source.docs.get(e.document),value=ledger.describeEntry220(e),key=[e.bucket,e.account,value.key].join("|"),after=add(running.get(key) || "0",value.quantity);running.set(key,after);
+        return {item:e,cells:[e.originalDate || (e.date?persianFormatter.format(new Date(e.date+"T12:00:00Z")):"—"),String(d?.invoiceNumber || d?.number || ""),types[e.type] || e.type,accountName(e),value.goodName,value.name,f(value.purity),amount219(value.quantity,value.unit,true),value.unit.name,value.count!==null?amount219(value.count):"—",amount219(after,value.unit,true),ledger.label220(after,e.bucket),e.notes || ""]};
       });
-      latestRows=rows.map(r=>r.cells.map((v,i)=>numericCell219(v,latestHeaders[i],r.cells[7])));const totals=card(el("h3","مانده به تفکیک کالا، ارز و واحد"));
-      for(const [key,value]of sums){const [bucket,id,purity]=key.split("|"),g=good(id);totals.append(el("p",(g?.name || id)+" — "+amount219(value,g?.unitId)+" "+name("units",g?.unitId)+(purity?" — عیار "+f(purity):"")+(bucket==="commitment"?" — تعهد":"")));}
-      host.append(totals,bar(btn("چاپ گزارش",printReport),el("span",f(rows.length)+" ردیف")));
+      latestRows=rows.map(r=>r.cells);host.append(balanceSummary220(entries,"مانده‌های نهایی به تفکیک دارایی و عیار",true,"report220-balances"),bar(btn("چاپ گزارش",printReport),el("span",f(rows.length)+" ردیف")));
       const max=Math.max(0,Math.ceil(rows.length/50)-1);page=Math.min(page,max);
-      host.append(table(latestHeaders,rows.slice(page*50,(page+1)*50).map(r=>({...r,cells:r.cells.map((v,i)=>[1,5,6,8,9].includes(i)?f(v):v)})),e=>btn("نمایش سند",()=>{const d=source.docs.get(e.document);d?.archive?showArchive(d):showDocument(e.document);})),bar(btn("صفحه قبل",()=>{page=Math.max(0,page-1);render();}),el("span",f(page+1)+" / "+f(max+1)),btn("صفحه بعد",()=>{page=Math.min(max,page+1);render();})));
+      host.append(table(latestHeaders,rows.slice(page*50,(page+1)*50),e=>btn("نمایش سند",()=>{const d=source.docs.get(e.document);d?.archive?showArchive(d):showDocument(e.document);})),bar(btn("صفحه قبل",()=>{page=Math.max(0,page-1);render();}),el("span",f(page+1)+" / "+f(max+1)),btn("صفحه بعد",()=>{page=Math.min(max,page+1);render();})));
     }
     function printReport() {
       const w = window.open("", "_blank", "width=1200,height=850");
@@ -3382,13 +3098,13 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۹";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۰";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۱۹";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۰";
     });
     const api = {
       escape218(){
-        const dialog=document.querySelector("dialog[open]");if(dialog){dialog.close();return true;}
+        const dialog=[...document.querySelectorAll("dialog[open]")].at(-1);if(dialog){dialog.close();return true;}
         if(document.body.classList.contains("next204-active")) {
           if(route==="operations" && forms214.escape218())return true;
           const focused=document.activeElement,controls=[...host.querySelectorAll("input,select,textarea")].filter(c=>!c.disabled && c.getClientRects().length),i=controls.indexOf(focused);
@@ -3454,7 +3170,7 @@ globalThis.SadraNext = {
       el,btn,field,select,input,bar,card,table,f,name,host,legacyDate,amount219,
       ledger:()=>ledger,raw,openEditor:edit,rerender:render,message,
       needsReview:()=>migrationNotice,
-      showDocument,
+      showDocument,showBalance220,
       openReview:()=>go("funds"),
       legacyInstallments:()=>bridge.installments?.() || [],
       openLegacyInstallments:()=>bridge.openLegacyInstallments?.(),
