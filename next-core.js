@@ -1312,10 +1312,45 @@
         return clone(current);
       });
     }
+    priceOptions227(draft) {
+      const material=norm(this.s.materials?.find(m=>m.id===draft.materialId)?.name || draft.balanceMaterial220 || draft.metal || ""),mode=draft.catalogMode || (draft.standardWeight?"weightCount":draft.mode);
+      return [...(["count","weightCount"].includes(mode)?[{id:"piece",name:"نرخ هر عدد"}]:[]),...(["weight","weightCount"].includes(mode)?[{id:"gram",name:"نرخ هر گرم واقعی"},...(material==="طلا"?[{id:"gold750",name:"مظنهٔ طلا — معادل عیار ۷۵۰"}]:[]),...(material==="نقره"?[{id:"silver",name:"نرخ هر مثقال نقره"}]:[])]:[])];
+    }
+    priceChoice227(draft) {
+      if(draft.catalogPrice227)return draft.catalogPrice227;
+      const mode=draft.catalogMode || (draft.standardWeight?"weightCount":draft.mode),u=this.s.units.find(u=>u.id===(draft.catalogRateUnitId || draft.rateUnitId)),basis=draft.catalogPricingBasis225 || draft.pricingBasis225;
+      if(mode==="count" || u?.dimension==="count")return "piece";
+      if(basis==="gold750" || ((basis===undefined || basis==="auto") && u?.factor && dec(u.factor)===dec("4.3318")))return "gold750";
+      if(basis==="silver")return "silver";
+      return "gram";
+    }
+    configureCatalog227(input) {
+      const x=clone(input),mode=x.catalogMode,old=this.s.goods.find(g=>g.id===x.id);
+      if(!["count","weight","weightCount"].includes(mode))throw Error("نوع کالا معتبر نیست");
+      if(!this.priceOptions227(x).some(o=>o.id===x.catalogPrice227))throw Error("مبنای قیمت‌گذاری با نوع و جنس کالا سازگار نیست");
+      const unit=(dimension,factor,name)=>{const compatible=this.s.units.filter(u=>u.active!==false && u.dimension===dimension && (dimension!=="weight" || dec(u.factor)===dec(factor)));return compatible.find(u=>norm(u.name)===norm(name)) || compatible[0] || this.put("units",{name,dimension,...(dimension==="weight"?{factor}:{}),decimals:dimension==="count"?0:8,active:true});};
+      const quantity=mode==="count"?unit("count",null,"عدد"):unit("weight","1","گرم");
+      x.catalogUnitId=old?.unitId || quantity.id;
+      const rate=x.catalogPrice227==="piece"?(mode==="count"?this.find("units",x.catalogUnitId,true):unit("count",null,"عدد")):x.catalogPrice227==="gold750"?unit("weight","4.3318","مثقال طلای قیمت‌گذاری"):x.catalogPrice227==="silver"?unit("weight","4.6083","مثقال نقره"):unit("weight","1","گرم");
+      x.catalogRateUnitId=rate.id;x.catalogPricingBasis225=({gold750:"gold750",silver:"silver"}[x.catalogPrice227] || "physical");
+      x.catalogFeeBasis=mode==="weight"?"weightPercent":"perPiece";
+      x.variablePurity221=mode==="weight" && (x.variablePurity221===true || x.variablePurity221==="yes");
+      if(mode==="weightCount"){
+        x.catalogPieceWeight=pos(x.catalogPieceWeight);const gram=unit("weight","1","گرم");x.catalogPieceUnitId=gram.id;
+        if(old?.standardWeight && this.used("goods",old.id)){x.catalogPieceUnitId=old.standardWeightUnitId;x.catalogPieceWeight=this.convert(x.catalogPieceWeight,gram.id,x.catalogPieceUnitId);}
+      }else {x.catalogPieceWeight="";x.catalogPieceUnitId=old?.standardWeightUnitId || quantity.id;}
+      if(mode==="count")x.catalogPurity=old?.purity || "";
+      if(x.catalogHasFee==="yes"){
+        if(!["fixed","variable"].includes(x.catalogFeeMode))throw Error("نوع کارمزد را انتخاب کنید");
+        if(x.catalogFeeMode==="fixed" && (x.catalogFeeValue===undefined || x.catalogFeeValue==="" || dec(x.catalogFeeValue)<0n || (mode==="weight" && dec(x.catalogFeeValue)>dec("100"))))throw Error("مبلغ یا درصد کارمزد معتبر نیست");
+      }
+      x.catalogModel227=true;return x;
+    }
     catalogGood217(id) {
       const draft=(this.s.catalogGoods || []).find(g=>g.id===id),old=this.s.goods.find(g=>g.id===id);
       if(!draft)return this.find("goods",id,true);
       if(draft.active===false)throw Error("کالا غیرفعال است");
+      if(draft.catalogModel227 && (!this.priceOptions227(draft).some(o=>o.id===draft.catalogPrice227) || draft.catalogFeeBasis!==(draft.catalogMode==="weight"?"weightPercent":"perPiece")))throw Error("پیکربندی قیمت یا کارمزد کالا سازگار نیست");
       const mode=draft.catalogMode==="count"?"count":"weight";
       const u=this.find("units",this.catalogUnit219({...old,...draft})?.id,true);
       const rateId=[draft.catalogRateUnitId,old?.rateUnitId].find(id=>this.s.units.some(rate=>rate.id===id && rate.active!==false && (rate.dimension===mode || (draft.catalogMode==="weightCount" && rate.dimension==="count")) && (mode==="weight" || rate.id===u.id)));
@@ -1325,9 +1360,9 @@
       if(!asset)asset=this.put("assets",{name:draft.name,nature:"commodity",unitId:u.id,decimals:u.decimals,active:true});
       const pieceUnit=draft.catalogPieceUnitId || old?.standardWeightUnitId || this.s.units.find(u=>u.dimension==="weight" && dec(u.factor || "0")===SCALE)?.id;
       const g={...old,id:draft.id,name:draft.name,active:true,mode,assetId:asset.id,unitId:u.id,rateUnitId:rate.id,pricingBasis225:draft.catalogPricingBasis225 || "auto",groupId:draft.groupId,feeMode:"none",balanceMaterial220:this.s.materials?.find(m=>m.id===draft.materialId)?.name || draft.balanceMaterial220 || old?.balanceMaterial220 || "",materialId:draft.materialId || old?.materialId || "",variablePurity221:!!draft.variablePurity221,
-        purity:draft.catalogPurity || old?.purity || "",metal:(draft.catalogPurity || old?.purity)?(old?.metal || "عیاردار"):"",
+        purity:draft.catalogPurity || old?.purity || "",metal:(draft.catalogPurity || old?.purity)?(old?.metal || "عیاردار"):old?.metal,
         standardWeight:draft.catalogMode==="weightCount"?pos(draft.catalogPieceWeight):"",standardWeightUnitId:pieceUnit,allowActual:false};
-      if(old && this.used("goods",id) && ["mode","unitId","purity","standardWeight","standardWeightUnitId"].some(k=>(g[k] || "")!==(old[k] || "")))throw Error("واحد، عیار و وزن ثابت کالای دارای سابقه قابل تغییر نیست؛ کالای تازه معرفی کنید");
+      if(old && this.used("goods",id) && ["mode","unitId","purity",...(g.standardWeight || old.standardWeight?["standardWeight","standardWeightUnitId"]:[])].some(k=>(g[k] || "")!==(old[k] || "")))throw Error("واحد، عیار و وزن ثابت کالای دارای سابقه قابل تغییر نیست؛ کالای تازه معرفی کنید");
       return this.put("goods",g);
     }
     pricing225(g,quantity,purity,count,rate,historical) {
@@ -1348,8 +1383,16 @@
       const units=str(divRound(numerator,denominator)),amount=str(divRound(numerator*dec(pos(rate)),denominator*SCALE));
       return {...clone(basis),basis:mode,units,rate:pos(rate),amount};
     }
+    feePolicy227(line) {
+      const old=line.id?(this.s.invoiceHeaders214 || []).flatMap(h=>h.rows || []).find(r=>r.id===line.id && r.good===line.good):null;
+      if(!old)return null;
+      if(old.feePolicy227)return clone(old.feePolicy227);
+      if(!Array.isArray(old.feeDetails))return null;
+      const fee=old.feeDetails[0];return {catalogHasFee:fee?"yes":"no",catalogFeeMode:fee?.mode || "fixed",catalogFeeBasis:fee?.basis || "perPiece",catalogFeeValue:fee?.value || "0"};
+    }
     commodityValues217(line) {
-      const g=this.catalogGood217(line.good),draft=(this.s.catalogGoods || []).find(x=>x.id===g.id) || {catalogMode:g.standardWeight?"weightCount":g.mode,catalogHasFee:g.feeMode && g.feeMode!=="none"?"yes":"no",catalogFeeMode:g.feeMode==="variable"?"variable":"fixed",catalogFeeBasis:g.feeMode==="gold"?"weightPercent":"perPiece",catalogFeeValue:g.feeMode==="gold"?g.feePercent:(this.s.version221?g.feeValue || "0":mul(g.feeValue || "0","10"))};
+      const g=this.catalogGood217(line.good),draft=clone((this.s.catalogGoods || []).find(x=>x.id===g.id) || {catalogMode:g.standardWeight?"weightCount":g.mode,catalogHasFee:g.feeMode && g.feeMode!=="none"?"yes":"no",catalogFeeMode:g.feeMode==="variable"?"variable":"fixed",catalogFeeBasis:g.feeMode==="gold"?"weightPercent":"perPiece",catalogFeeValue:g.feeMode==="gold"?g.feePercent:(this.s.version221?g.feeValue || "0":mul(g.feeValue || "0","10"))});
+      const policy=this.feePolicy227(line);if(policy)Object.assign(draft,policy);
       if(g.mode==="currency")throw Error("کالای غیرارزی انتخاب کنید");
       if(line.goodsGroup==="__ungrouped"?!!g.groupId:(!line.goodsGroup || ![g.groupId,g.subgroupId].includes(line.goodsGroup)))throw Error("کالا متعلق به گروه انتخابی نیست");
       const mode=draft?.catalogMode || (g.standardWeight?"weightCount":g.mode);
@@ -1376,7 +1419,7 @@
       }
       let purity=g.purity || "";
       if(g.variablePurity221){purity=pos(line.purity);if(dec(purity)>dec("1000"))throw Error("عیار حداکثر ۱۰۰۰ است");if(line.operation==="pay"){const lot=this.lots(line.partyId,g.id).find(l=>l.id===line.lot);if(!lot)throw Error("قطعهٔ موجود را انتخاب کنید");if(dec(lot.purity)!==dec(purity))throw Error("عیار با قطعهٔ انتخابی متفاوت است");if(dec(quantity)>dec(lot.quantity))throw Error("وزن پرداخت از موجودی همان قطعه بیشتر است");}}
-      return {good:g,quantity,count,unitId,displayAmount:this.convert(quantity,g.unitId,unitId),fee,purity};
+      return {good:g,quantity,count,unitId,displayAmount:this.convert(quantity,g.unitId,unitId),fee,purity,feePolicy227:{catalogHasFee:draft.catalogHasFee || "no",catalogFeeMode:draft.catalogFeeMode || "fixed",catalogFeeBasis:draft.catalogFeeBasis || "perPiece",catalogFeeValue:draft.catalogFeeValue || "0"}};
     }
     beginInvoiceEdit217(headerId) {
       return this.transaction(()=>{
@@ -1487,6 +1530,7 @@
         const row={id:old?.id || uid(),operation:input.operation,receiptKind:input.receiptKind,assetId:values.asset.id,assetName:values.commodity?.good.name || values.asset.name,
           purity:values.commodity?.purity || "",lot:input.lot || "",mark:input.mark || "",assay:input.assay || "",rate:input.rate || "",moneyAssetId:values.money?.id || input.moneyAssetId || "",
           good:values.commodity?.good.id || "",goodsGroup:input.goodsGroup || "",unitId:values.commodity?.unitId || values.asset.unitId,
+          feePolicy227:values.commodity?.feePolicy227 || null,
           count:values.commodity?.count || "",feeValue:input.feeValue || "",displayAmount:values.commodity?.displayAmount || values.amount,
           partyKind:input.partyKind,partyId:input.partyId,bankId:input.bankId || "",groupId:input.groupId || "",contractId:input.contractId || "",dueId:input.dueId || "",
           pricing225:old && old.good===(values.commodity?.good.id || "") && old.assetId===values.asset.id && input.pricing225?clone(input.pricing225):null,amount:values.commodity?.displayAmount || values.amount,tags:values.tags,notes:String(input.notes || ""),updated:new Date().toISOString()};

@@ -978,19 +978,13 @@ globalThis.SadraNext = {
             }),
           ),
         );
-        const dimension=v.catalogMode==="count"?"count":"weight",compatible=active("units").filter(u=>u.dimension===dimension);
-        fields.push(ref("catalogUnitId","واحد پیش‌فرض مقدار",null,compatible));
-        fields.push(ref("catalogRateUnitId","واحد مبنای نرخ",null,active("units").filter(u=>compatible.includes(u) || (v.catalogMode==="weightCount" && u.dimension==="count"))));
-        if(["weight","weightCount"].includes(v.catalogMode))fields.push(ref("catalogPricingBasis225","مبنای محاسبهٔ نرخ",null,choices({auto:"مطابق واحد انتخاب‌شده",physical:"وزن واقعی / هر قطعه",gold750:"مثقال طلای قیمت‌گذاری؛ ۴٫۳۳۱۸ گرم عیار ۷۵۰",silver:"مثقال نقره؛ ۴٫۶۰۸۳ گرم واقعی"})));
-        if (v.catalogMode==="weightCount")fields.push(ref("catalogPieceUnitId","واحد وزن هر قطعه",null,active("units").filter(u=>u.dimension==="weight")));
         if(["weight","weightCount"].includes(v.catalogMode))fields.push(ref("materialId","جنس دارایی","materials"));
         if(v.catalogMode==="weight")fields.push(ref("variablePurity221","عیار هنگام دریافت قطعه تعیین شود؟",null,[{id:"no",name:"خیر؛ عیار ثابت"},{id:"yes",name:"بله؛ آب‌شده با عیار متغیر"}]));
-        if (["weight", "weightCount","count"].includes(v.catalogMode))
-          fields.push(text("catalogPurity", v.catalogMode==="count"?"عیار (در صورت داشتن)":"عیار", "text", v.catalogMode!=="count" && v.variablePurity221!=="yes"));
-        if (v.catalogMode === "weightCount")
-          fields.push(
-            text("catalogPieceWeight", "وزن ثابت هر قطعه", "text", true),
-          );
+        if(["weight","weightCount"].includes(v.catalogMode))fields.push(text("catalogPurity","عیار","text",v.variablePurity221!=="yes"));
+        if(v.catalogMode==="weightCount")fields.push(text("catalogPieceWeight","وزن ثابت هر قطعه (گرم)","text",true));
+        fields.push({key:"settlement227",label:"مبنای تسویه با طرف حساب",type:"display",value:v.catalogMode==="count"?"تعداد همان کالا":"وزن؛ برای طلا معادل عیار ۷۵۰"});
+        const pricing=ledger.priceOptions227(v);
+        if(v.catalogMode!=="count")fields.push(ref("catalogPrice227","مبنای قیمت‌گذاری خریدوفروش",null,pricing));
         if (["count", "weightCount", "weight"].includes(v.catalogMode)) {
           fields.push(
             ref(
@@ -1012,12 +1006,12 @@ globalThis.SadraNext = {
                 }),
               ),
             );
-            fields.push(ref("catalogFeeBasis", "مبنای کارمزد", null, choices({weightPercent: "درصدی از وزن کالا در فاکتور", perPiece: "مبلغ به‌ازای هر عدد"})));
+            fields.push({key:"feeBasis227",label:"مبنای کارمزد",type:"display",value:v.catalogMode==="weight"?"درصدی از وزن همان سطر فاکتور":"مبلغ تومانی به‌ازای هر عدد"});
             if (v.catalogFeeMode === "fixed")
               fields.push(
                 text(
                   "catalogFeeValue",
-                  v.catalogFeeBasis === "weightPercent" ? "درصد ثابت از وزن فاکتور" : "مبلغ ثابت هر عدد (تومان)",
+                  v.catalogMode === "weight" ? "درصد ثابت از وزن سطر فاکتور" : "مبلغ ثابت هر عدد (تومان)",
                   "text",
                   true,
                 ),
@@ -1073,8 +1067,12 @@ globalThis.SadraNext = {
       if(kind==="assets" && values.unitId)values.currencyCode=unit(values.unitId)?.currencyCode || "";
       if(kind==="goods") {
         values.catalogPricingBasis225 ||= "auto";
+        values.catalogPrice227=ledger.priceChoice227(values);
+        values.catalogFeeBasis=values.catalogMode==="weight"?"weightPercent":"perPiece";
+        if(values.catalogMode==="weightCount" && values.catalogPieceWeight && values.catalogPieceUnitId){const gram=active("units").find(u=>u.dimension==="weight" && dec(u.factor)===dec("1"));if(gram)values.catalogPieceWeight=ledger.convert(values.catalogPieceWeight,values.catalogPieceUnitId,gram.id);}
         if(typeof values.variablePurity221==="boolean")values.variablePurity221=values.variablePurity221?"yes":"no";
         if(!values.materialId)values.materialId=ledger.s.materials?.find(m=>norm(m.name)===norm(values.balanceMaterial220 || values.metal))?.id || "";
+        if(!ledger.priceOptions227(values).some(o=>o.id===values.catalogPrice227))values.catalogPrice227=values.catalogMode==="count"?"piece":"gram";
         if(!values.balanceMaterial220 && values.metal && values.metal!=="عیاردار")values.balanceMaterial220=values.metal;
         const mode=values.catalogMode==="count"?"count":"weight";
         values.catalogUnitId=ledger.catalogUnit219(values)?.id || "";
@@ -1091,6 +1089,7 @@ globalThis.SadraNext = {
       const draw = () => {
         grid.replaceChildren();
         for (const spec of schema(kind, values).filter(spec=>!options.nameOnly || spec.key === "name")) {
+          if(spec.type==="display"){const control=input(spec.value);control.readOnly=true;control.tabIndex=-1;control.id="n-"+spec.key;grid.append(field(spec.label,control));continue;}
           let control;
           if (spec.type === "select") {
             const items = [...spec.items];
@@ -1157,6 +1156,7 @@ globalThis.SadraNext = {
                   "variablePurity221",
                   "catalogUnitId",
                   "catalogMode",
+                  "materialId",
                   "catalogHasFee",
                   "catalogFeeMode",
                   "catalogFeeBasis",
@@ -1175,7 +1175,10 @@ globalThis.SadraNext = {
                   const d=values.catalogMode==="count"?"count":"weight";
                   values.catalogUnitId=active("units").find(u=>u.dimension===d && (d==="count"?u.decimals===0:dec(u.factor || "0")===dec("1")))?.id || "";
                   values.catalogRateUnitId=values.catalogUnitId;
+                  values.catalogFeeBasis=values.catalogMode==="weight"?"weightPercent":"perPiece";
+                  values.catalogPrice227=values.catalogMode==="count"?"piece":"gram";
                 }
+                if(spec.key==="materialId" && !ledger.priceOptions227(values).some(o=>o.id===values.catalogPrice227))values.catalogPrice227=values.catalogMode==="count"?"piece":"gram";
                 if(spec.key==="catalogUnitId" && values.catalogMode==="count")values.catalogRateUnitId=values.catalogUnitId;
                 if (spec.key === "assetTypeId" && values.assetTypeId) {
                   values.mode = ledger.find(
@@ -1290,6 +1293,8 @@ globalThis.SadraNext = {
       }
       if (kind === "goods") {
         const x = clone(values);
+        x.catalogFeeBasis=x.catalogMode==="weight"?"weightPercent":"perPiece";
+        if(x.catalogMode==="count")x.catalogPrice227="piece";
         x.name = String(x.name || "").trim();
         for(const key of ["catalogPurity","catalogPieceWeight","catalogFeeValue"])if(x[key]!==undefined && x[key]!=="")x[key]=str(dec(x[key]));
         if (!norm(x.name)) throw Error("نام کالا الزامی است");
@@ -1334,6 +1339,7 @@ globalThis.SadraNext = {
         )
           throw Error("نام کالا در همین گروه تکراری است");
         ledger.transaction(() => {
+          Object.assign(x,ledger.configureCatalog227(x));
           ledger.s.catalogGoods ||= [];
           const old = ledger.s.catalogGoods.find((g) => g.id === x.id);
           const before = clone(old || null);
@@ -1437,7 +1443,7 @@ globalThis.SadraNext = {
         host.append(
           el(
             "p",
-            "این مرحله فقط معرفی کالاهاست. مشخصات جدید پس از اتصال بخش‌ها در اسناد و محاسبات استفاده می‌شوند؛ فرمول‌های فعلی تغییر نکرده‌اند.",
+            "کارمزد و مبنای قیمت‌گذاری هر کالا در فاکتور استفاده می‌شود؛ موجودی با دریافت و پرداخت واقعی تغییر می‌کند.",
             "n-notice",
           ),
         );
@@ -1545,7 +1551,7 @@ globalThis.SadraNext = {
                               count: "تعدادی",
                               weight: "وزنی",
                               weightCount: "وزنی–تعدادی",
-                            }[x.catalogMode] || "") + " · واحد مقدار: " + name("units",x.catalogUnitId) + " · نرخ به‌ازای: " + name("units",x.catalogRateUnitId) +
+                            }[x.catalogMode] || "") + " · واحد مقدار: " + name("units",x.catalogUnitId) + " · قیمت‌گذاری: " + (ledger.priceOptions227(x).find(o=>o.id===ledger.priceChoice227(x))?.name || name("units",x.catalogRateUnitId)) +
                             (x.catalogPurity
                               ? " · عیار " + f(x.catalogPurity)
                               : "") +
@@ -3152,9 +3158,9 @@ globalThis.SadraNext = {
       },
       true,
     );
-    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۶";
+    document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۷";
     window.addEventListener("load", () => {
-      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۶";
+      document.title = "حسابداری محمد صدرا | نسخه ۵.۹.۱ | نسخه مرورگر | آپدیت ۲۲۷";
     });
     let menuArmed225=null;
     document.querySelector("aside").addEventListener("keydown",e=>{

@@ -1,9 +1,9 @@
 {
   "version": "5.9.1-browser",
-  "update": 226,
+  "update": 227,
   "date": "2026-10-17",
   "type": "browser",
-  "label": "اصلاح Enter روی شمارهٔ فاکتور جدید",
+  "label": "پیکربندی سادهٔ کالا، مبنای قیمت‌گذاری واحد و کارمزد مطابق نوع کالا",
   "entry": "index.html",
   "assets": [
     "next-core.js",
