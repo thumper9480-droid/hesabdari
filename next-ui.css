@@ -444,3 +444,20 @@ input[data-numeric217=true],input[data-unit219]{direction:ltr;text-align:right}
 @media(max-width:650px){#next204 .invoice218-rowlist table{table-layout:auto}#next204 .invoice218-rowlist th,#next204 .invoice218-rowlist td{font-size:11px}#next204 .invoice219-balance-card{min-width:0;flex:1 1 100%}}
 
 #next204 .balance220-dialog{width:min(1200px,94vw);max-width:94vw}#inventory220-controls{margin-bottom:12px}
+/* Update 221: compact balances with the requested panel identity. */
+#next204 .invoice219-balances{gap:7px;margin-top:9px}
+#next204 .invoice219-balances>.n-card{padding:9px 11px;border-width:2px;border-radius:8px}
+#next204 #invoice218-before{border-color:#b84141;background:#fff6f6}
+#next204 #invoice219-effect{border-color:#171717;background:#f6f6f6}
+#next204 #invoice218-after{border-color:#26834a;background:#f1faf4}
+#next204 .invoice219-balance-cards{gap:7px}
+#next204 .invoice219-balance-card{min-width:0;gap:5px;padding:7px 9px;box-shadow:none;flex:0 1 auto}
+#next204 .invoice219-balance-card small{width:auto}
+#next204 .invoice219-amount{font-size:15px}
+#next204 .invoice219-credit,#next204 .invoice219-credit~span{color:#17743e;font-weight:700}
+#next204 .invoice219-debit{font-weight:900;background:#fce6e6;color:#9e2424}
+#next204 .invoice221-category{color:#444;font-weight:700}
+#next204 #report221-rows{overflow:visible}#next204 #report221-rows tbody tr{cursor:pointer}
+#next204 #inventory221-items tbody tr{cursor:pointer}#next204 #inventory221-items tbody tr:hover{background:#e4f3e9}
+#next204 .invoice218-rowlist td,#next204 .invoice218-rowlist th{direction:inherit}
+#next204 .invoice218-rowlist bdi{direction:ltr}

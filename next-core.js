@@ -65,6 +65,7 @@
       units: [],
       assets: [],
       assetTypes: [],
+      materials: [],
       groups: [],
       fundTypes: [
         { id: "currency", name: "ارزی", nature: "currency", active: true },
@@ -194,6 +195,7 @@
       )
         return true;
       const refs = {
+        materials: ["materialId"],
         units: ["unitId", "rateUnitId", "standardWeightUnitId", "catalogUnitId", "catalogRateUnitId", "catalogPieceUnitId"],
         assets: ["assetId"],
         assetTypes: ["assetTypeId"],
@@ -656,6 +658,55 @@
         })),
       );
     }
+    setup221() {
+      if(this.s.version221)return;
+      return this.transaction(()=>{
+        this.s.materials ||= [];
+        for(const name of ["طلا","نقره","تیتانیوم","رودیوم",...this.s.goods.map(g=>g.balanceMaterial220 || g.metal).filter(n=>n && n!=="عیاردار")])if(!this.s.materials.some(m=>norm(m.name)===norm(name)))this.s.materials.push({id:uid(),name,active:true});
+        for(const g of this.s.goods){if(g.mode!=="weight")continue;let name=g.balanceMaterial220 || (g.metal!=="عیاردار"?g.metal:"");if(!name && /(?:نیم|تمام).*غیر/.test(norm(g.name)))name="طلا";const material=this.s.materials.find(m=>norm(m.name)===norm(name));if(material){g.materialId=material.id;g.balanceMaterial220=material.name;const draft=this.s.catalogGoods?.find(d=>d.id===g.id);if(draft){draft.materialId=material.id;draft.balanceMaterial220=material.name;}}}
+        for(const d of this.s.catalogGoods || []){if(d.catalogFeeBasis==="perPiece" && d.catalogHasFee==="yes" && !d.feeCurrency221){if(d.catalogFeeValue)d.catalogFeeValue=div(d.catalogFeeValue,"10");d.feeCurrency221="IRT";}}
+        let unit=this.s.units.find(u=>u.dimension==="currency" && (u.currencyCode==="IRT" || norm(u.name)===norm("تومان")));
+        if(!unit){unit={id:uid(),name:"تومان",dimension:"currency",currencyCode:"IRT",decimals:8,active:true};this.s.units.push(unit);}unit.active=true;unit.currencyCode="IRT";
+        let asset=this.s.assets.find(a=>a.nature==="currency" && a.unitId===unit.id);if(!asset){asset={id:uid(),name:"تومان",nature:"currency",unitId:unit.id,decimals:unit.decimals,active:true};this.s.assets.push(asset);}asset.active=true;
+        let money=this.s.goods.find(g=>g.mode==="currency" && g.assetId===asset.id);if(!money){money={id:uid(),name:"تومان",mode:"currency",assetId:asset.id,unitId:unit.id,rateUnitId:unit.id,feeMode:"none",active:true};this.s.goods.push(money);}money.active=true;
+        const rialUnits=new Set(this.s.units.filter(u=>u.currencyCode==="IRR" || norm(u.name)===norm("ریال")).map(u=>u.id)),rialAssets=new Set(this.s.assets.filter(a=>rialUnits.has(a.unitId)).map(a=>a.id)),rialGoods=new Set(this.s.goods.filter(g=>g.mode==="currency" && rialAssets.has(g.assetId)).map(g=>g.id));
+        const cv=v=>v===undefined || v===null || v===""?v:div(v,"10"),snap={...clone(money),unit:clone(unit),asset:clone(asset)};
+        const fee=f=>{if(rialGoods.has(f.good)){f.good=money.id;for(const k of ["quantity","signedQuantity","value","perUnit"])if(f[k]!==undefined)f[k]=cv(f[k]);f.unitId=unit.id;f.unitName="تومان";}};
+        for(const d of this.s.documents){if(d.entries.some(e=>rialGoods.has(e.good))){d.beforeToman221={entries:clone(d.entries),snapshots:clone(d.snapshots),good:d.good,quantity:d.quantity,baseAmount:d.baseAmount};for(const e of d.entries)if(rialGoods.has(e.good)){e.good=money.id;e.quantity=cv(e.quantity);if(e.accountSnapshot?.assetId && rialAssets.has(e.accountSnapshot.assetId))e.accountSnapshot.assetId=asset.id;}d.snapshots ||= {};d.snapshots[money.id]=clone(snap);}
+          if(rialGoods.has(d.good)){d.good=money.id;d.quantity=cv(d.quantity);}
+          if(rialGoods.has(d.moneyGood)){d.moneyGood=money.id;for(const k of ["baseAmount","unroundedBase","rate"])if(d[k]!==undefined)d[k]=cv(d[k]);}
+          for(const f of d.fees || [])fee(f);
+        }
+        for(const h of this.s.invoiceHeaders214 || [])for(const r of h.rows || []){if(rialAssets.has(r.assetId) && r.receiptKind==="currency"){r.assetId=asset.id;r.assetName="تومان";r.unitId=unit.id;for(const k of ["amount","displayAmount","signedAmount"])if(r[k]!==undefined)r[k]=cv(r[k]);}if(r.feeValue && !r.feeDetails?.some(f=>f.basis==="weightPercent") && !this.s.goods.some(g=>g.id===r.good && g.feeMode==="gold") && !(this.s.catalogGoods || []).find(g=>g.id===r.good && g.catalogFeeBasis==="weightPercent"))r.feeValue=cv(r.feeValue);for(const f of r.feeDetails || [])fee(f);}
+        const contracts=new Set();for(const c of this.s.installmentContracts214 || [])if(rialGoods.has(c.good)){contracts.add(c.id);c.good=money.id;c.goodName="تومان";c.unit=clone(unit);c.amount=cv(c.amount);c.total=cv(c.total);for(const d of c.dues)d.amount=cv(d.amount);}
+        for(const p of this.s.installmentSettlements216 || [])if(contracts.has(p.contractId))p.amount=cv(p.amount);
+        for(const f of this.s.funds)if(rialAssets.has(f.assetId)){f.beforeToman221=clone(f);f.assetId=asset.id;}
+        for(const g of this.s.goods)if(rialGoods.has(g.id))g.active=false;
+        for(const a of this.s.assets)if(rialAssets.has(a.id))a.active=false;
+        for(const u of this.s.units)if(rialUnits.has(u.id))u.active=false;
+        for(const e of this.s.legacyBalances || [])if(rialGoods.has(e.good)){e.good=money.id;e.quantity=cv(e.quantity);}
+        this.s.toman221={good:money.id,asset:asset.id,unit:unit.id,rialGoods:[...rialGoods],rialAssets:[...rialAssets],rialUnits:[...rialUnits]};
+        // Decimal precision may need one extra digit when converting an old rial fraction.
+        const required=Math.max(8,unit.decimals,...this.s.documents.flatMap(d=>d.entries.filter(e=>e.good===money.id).map(e=>(String(e.quantity).split(".")[1] || "").length)));
+        unit.decimals=Math.min(8,required);asset.decimals=unit.decimals;for(const d of this.s.documents)if(d.snapshots?.[money.id])d.snapshots[money.id].unit.decimals=unit.decimals;
+        this.s.version221=true;this.audit("upgrade221","settings","221",null,{toman:asset.id,materials:this.s.materials.length});
+      });
+    }
+    view221(entry,inventory=false) {
+      const v=this.describeEntry220(entry);
+      if(v.kind==="currency" && (v.unit.currencyCode==="IRR" || norm(v.unit.name)===norm("ریال"))){const target=this.s.toman221;if(target){v.quantity=div(v.quantity,"10");v.name="تومان";v.unit=clone(this.find("units",target.unit));v.key=["currency",target.asset,target.unit].join("|");}}
+      v.actualQuantity=v.quantity;v.actualPurity=v.purity;
+      if(!inventory && v.kind==="weight" && norm(v.material)===norm("طلا") && v.purity){v.quantity=this.equivalent(v.quantity,v.purity,"750");v.purity="750";v.name="طلا — معادل عیار ۷۵۰";v.key="weight|طلا|750";}
+      if(!inventory && ["person","commitment"].includes(entry.bucket)){v.quantity=sub("0",v.quantity);if(v.count!==null)v.count=sub("0",v.count);}
+      return v;
+    }
+    aggregate221(entries,byAccount=false,inventory=false) {
+      const groups=new Map();
+      for(const e of entries){const v=this.view221(e,inventory),key=[e.bucket,...(byAccount?[e.account]:[]),v.key].join("|");let g=groups.get(key);if(!g){g={...clone(v),key,bucket:e.bucket,account:byAccount?e.account:null,quantity:"0",count:"0",hasCount:false,details:[]};groups.set(key,g);}g.quantity=add(g.quantity,v.quantity);if(v.count!==null){g.count=add(g.count,v.count);g.hasCount=true;}const k=[e.account,e.good,e.purity || "",e.lot || "",e.component || ""].join("|");let d=g.details.find(d=>d.key===k);if(!d){d={key:k,account:e.account,good:e.good,name:v.goodName,quantity:"0",actualQuantity:"0",count:"0",hasCount:false,purity:v.actualPurity,unit:clone(v.unit),kind:v.kind,countedWeight:v.countedWeight,lot:e.lot || "",component:e.component || "",mark:e.mark || "",assay:e.assay || "",documents:[]};g.details.push(d);}d.quantity=add(d.quantity,v.quantity);d.actualQuantity=add(d.actualQuantity,v.actualQuantity);if(v.count!==null){d.count=add(d.count,v.count);d.hasCount=true;}if(e.document && !d.documents.includes(e.document))d.documents.push(e.document);}
+      return [...groups.values()];
+    }
+    accountBalances221(kind,id,entries=this.entries()) {const buckets={people:["person"],expenses:["expense"],incomes:["income"],banks:["stock","commitment"],funds:["stock","commitment"]}[kind] || [];return this.aggregate221(entries.filter(e=>e.account===id && buckets.includes(e.bucket)),true);}
+    label221(q,bucket="person") {if(bucket==="expense")return "هزینهٔ ثبت‌شده";if(bucket==="income")return "درآمد ثبت‌شده";if(dec(q)===0n)return "تسویه";if(bucket==="stock")return dec(q)>0n?"موجودی":"کسری موجودی";return dec(q)>0n?"طلبکار":"بدهکار";}
     describeEntry220(entry) {
       const doc=this.s.documents.find(d=>d.id===entry.document),current=this.s.goods.find(g=>g.id===entry.good);
       const good=entry.snapshot || doc?.snapshots?.[entry.good] || current;
@@ -667,7 +718,7 @@
         if(!unit.factor)throw Error("ضریب واحد وزن برای گزارش مشخص نیست");
         quantity=mul(quantity,unit.factor);
         const known=v=>v && !["عیاردار","کالایی","نامشخص"].includes(norm(v))?String(v).trim():"";
-        material=known(current?.balanceMaterial220) || known(good.balanceMaterial220) || known(good.metal) || known(asset?.metal) || (["طلا","نقره","پلاتین","پالادیوم"].includes(norm(asset?.name))?asset.name:"");
+        material=known(this.s.materials?.find(m=>m.id===current?.materialId)?.name) || known(current?.balanceMaterial220) || known(good.balanceMaterial220) || known(good.metal) || known(asset?.metal) || (["طلا","نقره","پلاتین","پالادیوم"].includes(norm(asset?.name))?asset.name:"");
         const family=material?norm(material):"unknown:"+good.id;
         key=["weight",family,purity || "unknown:"+good.id].join("|");
         name=(material || "جنس تعیین‌نشده — "+good.name)+(purity?" — عیار "+purity:"");
@@ -1006,7 +1057,7 @@
       });
     }
     resolveLot(input, g, outgoing) {
-      if (g.mode !== "weight" || !g.metal)
+      if (g.mode !== "weight" || (!g.metal && !g.variablePurity221))
         return {
           id: input.lot || "",
           purity: input.purity || g.purity || "",
@@ -1062,7 +1113,7 @@
         const entries = [],
           inStock = physical.includes(input.toKind),
           outStock = physical.includes(input.fromKind),
-          lot = input.catalogInvoice217 && outStock ? {id:"",purity:g.purity || "",mark:"",assay:""} : this.resolveLot({ ...input, fund: input.from }, g, outStock),
+          lot = input.catalogInvoice217 && outStock && !input.lot ? {id:"",purity:g.purity || "",mark:"",assay:""} : this.resolveLot({ ...input, fund: input.from }, g, outStock),
           info = {
             lot: lot.id,
             purity: lot.purity,
@@ -1081,7 +1132,8 @@
               let left=dec(q.quantity);
               for(const lot of this.lots(id,g.id)) {
                 if(left<=0n)break;
-                if(g.purity && lot.purity && dec(g.purity)!==dec(lot.purity))continue;
+                if(input.lot && lot.id!==input.lot)continue;
+                if(!g.variablePurity221 && g.purity && lot.purity && dec(g.purity)!==dec(lot.purity))continue;
                 const take=dec(lot.quantity)<left?dec(lot.quantity):left;left-=take;
                 entries.push({bucket:"stock",account:id,good:g.id,quantity:str(-take),count:q.count?sub("0",div(mul(str(take),q.count),q.quantity)):null,lot:lot.id,purity:lot.purity || g.purity || "",mark:lot.mark || "",assay:lot.assay || ""});
               }
@@ -1252,14 +1304,14 @@
       let asset=old?this.find("assets",old.assetId):this.s.assets.find(a=>a.nature==="commodity" && a.unitId===u.id && norm(a.name)===norm(draft.name));
       if(!asset)asset=this.put("assets",{name:draft.name,nature:"commodity",unitId:u.id,decimals:u.decimals,active:true});
       const pieceUnit=draft.catalogPieceUnitId || old?.standardWeightUnitId || this.s.units.find(u=>u.dimension==="weight" && dec(u.factor || "0")===SCALE)?.id;
-      const g={...old,id:draft.id,name:draft.name,active:true,mode,assetId:asset.id,unitId:u.id,rateUnitId:rate.id,groupId:draft.groupId,feeMode:"none",balanceMaterial220:draft.balanceMaterial220 || old?.balanceMaterial220 || "",
+      const g={...old,id:draft.id,name:draft.name,active:true,mode,assetId:asset.id,unitId:u.id,rateUnitId:rate.id,groupId:draft.groupId,feeMode:"none",balanceMaterial220:this.s.materials?.find(m=>m.id===draft.materialId)?.name || draft.balanceMaterial220 || old?.balanceMaterial220 || "",materialId:draft.materialId || old?.materialId || "",variablePurity221:!!draft.variablePurity221,
         purity:draft.catalogPurity || old?.purity || "",metal:(draft.catalogPurity || old?.purity)?(old?.metal || "عیاردار"):"",
         standardWeight:draft.catalogMode==="weightCount"?pos(draft.catalogPieceWeight):"",standardWeightUnitId:pieceUnit,allowActual:false};
       if(old && this.used("goods",id) && ["mode","unitId","purity","standardWeight","standardWeightUnitId"].some(k=>(g[k] || "")!==(old[k] || "")))throw Error("واحد، عیار و وزن ثابت کالای دارای سابقه قابل تغییر نیست؛ کالای تازه معرفی کنید");
       return this.put("goods",g);
     }
     commodityValues217(line) {
-      const g=this.catalogGood217(line.good),draft=(this.s.catalogGoods || []).find(x=>x.id===g.id) || {catalogMode:g.standardWeight?"weightCount":g.mode,catalogHasFee:g.feeMode && g.feeMode!=="none"?"yes":"no",catalogFeeMode:g.feeMode==="variable"?"variable":"fixed",catalogFeeBasis:g.feeMode==="gold"?"weightPercent":"perPiece",catalogFeeValue:g.feeMode==="gold"?g.feePercent:mul(g.feeValue || "0","10")};
+      const g=this.catalogGood217(line.good),draft=(this.s.catalogGoods || []).find(x=>x.id===g.id) || {catalogMode:g.standardWeight?"weightCount":g.mode,catalogHasFee:g.feeMode && g.feeMode!=="none"?"yes":"no",catalogFeeMode:g.feeMode==="variable"?"variable":"fixed",catalogFeeBasis:g.feeMode==="gold"?"weightPercent":"perPiece",catalogFeeValue:g.feeMode==="gold"?g.feePercent:(this.s.version221?g.feeValue || "0":mul(g.feeValue || "0","10"))};
       if(g.mode==="currency")throw Error("کالای غیرارزی انتخاب کنید");
       if(line.goodsGroup==="__ungrouped"?!!g.groupId:(!line.goodsGroup || ![g.groupId,g.subgroupId].includes(line.goodsGroup)))throw Error("کالا متعلق به گروه انتخابی نیست");
       const mode=draft?.catalogMode || (g.standardWeight?"weightCount":g.mode);
@@ -1278,13 +1330,15 @@
           fee={basis:"weightPercent",value:str(dec(value)),quantity:this.round(div(mul(quantity,value),"100"),g.unitId),good:g.id};
         } else {
           if(!count)throw Error("برای کارمزد هر عدد، تعداد قطعات را مشخص کنید");
-          const asset=this.s.assets.find(a=>a.active!==false && a.nature==="currency" && this.find("units",a.unitId).currencyCode==="IRR");
-          if(!asset)throw Error("برای کارمزد مبلغی، ابتدا ارز ریال با کد IRR معرفی کنید");
+          const asset=this.s.assets.find(a=>a.active!==false && a.nature==="currency" && this.find("units",a.unitId).currencyCode===(this.s.version221?"IRT":"IRR"));
+          if(!asset)throw Error("ابتدا ارز تومان را معرفی کنید");
           const money=this.currencyGood216(asset.id);
           fee={basis:"perPiece",value:str(dec(value)),quantity:this.precision(mul(count,value),money.unitId),good:money.id};
         }
       }
-      return {good:g,quantity,count,unitId,displayAmount:this.convert(quantity,g.unitId,unitId),fee};
+      let purity=g.purity || "";
+      if(g.variablePurity221){purity=pos(line.purity);if(dec(purity)>dec("1000"))throw Error("عیار حداکثر ۱۰۰۰ است");if(line.operation==="pay"){const lot=this.lots(line.partyId,g.id).find(l=>l.id===line.lot);if(!lot)throw Error("قطعهٔ موجود را انتخاب کنید");if(dec(lot.purity)!==dec(purity))throw Error("عیار با قطعهٔ انتخابی متفاوت است");if(dec(quantity)>dec(lot.quantity))throw Error("وزن پرداخت از موجودی همان قطعه بیشتر است");}}
+      return {good:g,quantity,count,unitId,displayAmount:this.convert(quantity,g.unitId,unitId),fee,purity};
     }
     beginInvoiceEdit217(headerId) {
       return this.transaction(()=>{
@@ -1358,6 +1412,12 @@
       return doc;
     }
     validateInvoiceLine216(header,line) {
+      if(["buy","sell"].includes(line.operation)) {
+        if(header.partyKind!=="people")throw Error("طرف خرید و فروش باید فرد باشد");
+        const commodity=this.commodityValues217(line),asset=this.find("assets",commodity.good.assetId,true),money=this.find("assets",line.moneyAssetId,true);
+        if(money.nature!=="currency" || this.find("units",money.unitId).currencyCode==="IRR")throw Error("ارز مبلغ معامله معتبر نیست");pos(line.rate);
+        const tags=[...new Set(line.tags || [])];tags.forEach(id=>this.find("tags",id,true));return {asset,amount:commodity.quantity,tags,commodity,trade:true};
+      }
       if(!["receive","pay"].includes(line.operation) || !["currency","commodity"].includes(line.receiptKind))throw Error("نوع دریافت یا پرداخت را مشخص کنید");
       const commodity=line.receiptKind==="commodity"?this.commodityValues217(line):null;
       const asset=this.find("assets",commodity?commodity.good.assetId:line.assetId,true),unit=this.find("units",asset.unitId,true);
@@ -1383,6 +1443,7 @@
         const old=input.id?header.rows.find(r=>r.id===input.id):null;
         if(input.id && !old)throw Error("سطر موردنظر یافت نشد");
         const row={id:old?.id || uid(),operation:input.operation,receiptKind:input.receiptKind,assetId:values.asset.id,assetName:values.commodity?.good.name || values.asset.name,
+          purity:values.commodity?.purity || "",lot:input.lot || "",mark:input.mark || "",assay:input.assay || "",rate:input.rate || "",moneyAssetId:input.moneyAssetId || "",
           good:values.commodity?.good.id || "",goodsGroup:input.goodsGroup || "",unitId:values.commodity?.unitId || values.asset.unitId,
           count:values.commodity?.count || "",feeValue:input.feeValue || "",displayAmount:values.commodity?.displayAmount || values.amount,
           partyKind:input.partyKind,partyId:input.partyId,bankId:input.bankId || "",groupId:input.groupId || "",contractId:input.contractId || "",dueId:input.dueId || "",
@@ -1418,24 +1479,28 @@
           const values=this.validateInvoiceLine216(header,row),c=values.commodity;
           const good=row.partyKind==="installments"?this.find("goods",this.find("installmentContracts214",row.contractId).good,true):c?c.good:this.currencyGood216(row.assetId);
           let doc;
-          if(row.partyKind==="installments") doc=this.postInstallmentLine216(header,{...row,amount:values.amount},good,date);
+          if(values.trade) {
+            const money=this.currencyGood216(row.moneyAssetId),base=this.round(mul(this.convert(values.amount,good.unitId,good.rateUnitId || good.unitId),pos(row.rate)),money.unitId),sign=row.operation==="buy"?1n:-1n;
+            doc=this.append({type:row.operation,token:header.id+":"+header.postingToken+":"+row.id,date,lineTags:row.tags,notes:row.notes},[{bucket:"person",account:header.partyId,good:good.id,quantity:str(dec(values.amount)*sign),purity:c.purity || good.purity || "",component:"goods"},{bucket:"person",account:header.partyId,good:money.id,quantity:str(-dec(base)*sign),component:"money"}],{good:good.id,person:header.partyId,moneyGood:money.id,quantity:values.amount,count:c.count,rate:pos(row.rate),baseAmount:base,physical:false});
+          }
+          else if(row.partyKind==="installments") doc=this.postInstallmentLine216(header,{...row,amount:values.amount},good,date);
           else {
             const source=row.operation==="receive"?header:row,target=row.operation==="receive"?row:header;
-            doc=this.movement({type:row.operation,token:header.id+":"+(header.postingToken || "")+":"+row.id,date,good:good.id,quantity:values.amount,count:c?.count || undefined,
+            doc=this.movement({type:row.operation,token:header.id+":"+(header.postingToken || "")+":"+row.id,date,good:good.id,quantity:values.amount,count:c?.count || undefined,purity:c?.purity || undefined,lot:row.lot || undefined,mark:row.mark || "",assay:row.assay || "",
               fromKind:source.partyKind,from:source.partyId,toKind:target.partyKind,to:target.partyId,lineTags:row.tags,tags:[],notes:row.notes,catalogInvoice217:!!c});
           }
           const saved=this.find("documents",doc.id);saved.invoiceHeader=header.id;saved.invoiceNumber=header.number;saved.invoiceRow=row.id;
           if(c?.fee && dec(c.fee.quantity)>0n) {
             const party=row.partyKind==="installments"?this.find("installmentContracts214",row.contractId):["banks","funds"].includes(header.partyKind) && !["banks","funds"].includes(row.partyKind)?row:header;
             const kind=party.partyKind,bucket={people:"person",expenses:"expense",incomes:"income",banks:"commitment",funds:"commitment"}[kind];
-            const baseEntry=saved.entries.find(e=>e.account===party.partyId && e.component!=="fee"),sign=baseEntry?(dec(baseEntry.quantity)<0n?-1n:1n):(row.operation==="receive"?-1n:1n);
-            const entry={bucket,account:party.partyId,good:c.fee.good,quantity:str(dec(c.fee.quantity)*sign),component:"fee",purity:c.fee.basis==="weightPercent"?good.purity || "":"",lineTags:clone(row.tags),accountSnapshot:clone(this.find(["banks","funds"].includes(kind)?"funds":kind,party.partyId))};
+            const baseEntry=saved.entries.find(e=>e.account===party.partyId && e.component!=="fee"),sign=values.trade?(row.operation==="buy"?-1n:1n):baseEntry?(dec(baseEntry.quantity)<0n?-1n:1n):(row.operation==="receive"?-1n:1n);
+            const entry={bucket,account:party.partyId,good:c.fee.good,quantity:str(dec(c.fee.quantity)*sign),component:"fee",purity:c.fee.basis==="weightPercent"?c.purity || good.purity || "":"",lineTags:clone(row.tags),accountSnapshot:clone(this.find(["banks","funds"].includes(kind)?"funds":kind,party.partyId))};
             saved.entries.push(entry);const fg=this.find("goods",c.fee.good);saved.snapshots[fg.id]={...clone(fg),unit:clone(this.find("units",fg.unitId)),asset:clone(this.find("assets",fg.assetId))};
             saved.fees=[clone(c.fee)];
           }
           if(c){saved.quantity=values.amount;saved.count=c.count;saved.displayUnitId=c.unitId;saved.displayAmount=c.displayAmount;}
           row.documentId=doc.id;
-          row.purity=c?good.purity || "":"";
+          row.purity=c?c.purity || good.purity || "":"";
           const principal=saved.entries.find(e=>e.account===header.partyId && e.component!=="fee"),direction=principal?(dec(principal.quantity)<0n?-1n:1n):(row.operation==="receive"?-1n:1n);
           row.signedAmount=str(dec(row.amount)*direction);row.signedCount=row.count?str(dec(row.count)*direction):"";
           row.feeDetails=(saved.fees || []).map(fee=>{
