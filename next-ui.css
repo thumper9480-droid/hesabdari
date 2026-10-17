@@ -474,3 +474,12 @@ input[data-numeric217=true],input[data-unit219]{direction:ltr;text-align:right}
 #next204 .invoice222-fee-total{display:flex;gap:7px;flex-wrap:wrap;align-items:baseline;font-size:16px}
 #next204 .invoice222-routes{display:flex;flex-direction:column;gap:7px;padding:12px 15px;margin-top:10px;background:#fff;border-radius:8px;font-size:16px}
 #next204 .invoice222-routes strong{margin-inline:5px}
+
+/* Update 223: report balances, dense readable catalog and keyboard focus. */
+#next204 #report223-balances{border:2px solid #26834a;background:#f1faf4;margin-top:14px}
+#next204 #report223-balances .invoice219-amount{font-size:26px}
+#next204 #goods223-list td{padding:6px 9px!important;font-size:16px!important;font-weight:700;line-height:1.45}
+#next204 #goods223-list th{font-size:16px!important;font-weight:800;padding:7px 9px!important}
+#next204 #goods223-list button{padding:4px 7px;font-size:13px}
+aside button:focus-visible,aside summary:focus-visible{outline:3px solid #ffe08a;outline-offset:-3px;background:#236b52!important;color:white!important}
+#next204 #report223-content bdi{unicode-bidi:isolate;direction:ltr}

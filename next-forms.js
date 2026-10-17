@@ -83,7 +83,7 @@ globalThis.SadraForms214 = {
       function parentChanged(){state.partyId="";state.partyText="";}
       function draw() {
         root.replaceChildren();
-        add("partyKind","گروه طرف حساب",Object.entries(options).map(([id,name])=>({id,name})),()=>{state.partyId="";state.partyText="";state.bankId="";state.groupId="";state.contractId="";state.dueId="";});
+        add("partyKind","گروه طرف حساب",Object.entries(options).map(([id,name])=>({id,name})).sort((a,b)=>a.name.localeCompare(b.name,"fa")),()=>{state.partyId="";state.partyText="";state.bankId="";state.groupId="";state.contractId="";state.dueId="";});
         const kind=state.partyKind;if(!kind)return;
         let list=[];
         if(kind==="installments") {
@@ -214,6 +214,10 @@ globalThis.SadraForms214 = {
         const allowedKinds=headerPhysical?(headerFund?.nature==="commodity"?[{id:"commodity",name:"کالایی"}]:[{id:"currency",name:"ارزی"}]):[{id:"currency",name:"ارزی"},{id:"commodity",name:"کالایی"}];
         if(r.operation && !allowedOperations.some(x=>x.id===r.operation))r.operation="";
         if(r.receiptKind && !allowedKinds.some(x=>x.id===r.receiptKind)){r.receiptKind="";r.good="";r.assetId="";r.partyKind="";r.partyId="";}
+        if(headerPhysical && headerFund?.nature!=="commodity" && ["receive","pay"].includes(r.operation)){
+          r.receiptKind="currency";
+          if(headerFund?.assetId)r.assetId=headerFund.assetId;
+        }
         dropdown("operation","نوع عملیات",allowedOperations,()=>{r.receiptKind="";r.assetId="";r.partyKind="";r.partyId="";r.bankId="";r.groupId="";r.contractId="";r.dueId="";});
         if(["receive","pay","buy","sell"].includes(r.operation)) {
           dropdown("receiptKind",["buy","sell"].includes(r.operation)?"نوع کالا":r.operation==="receive"?"نوع دریافت":"نوع پرداخت",["buy","sell"].includes(r.operation)?[{id:"commodity",name:"کالایی"}]:allowedKinds,()=>{r.assetId="";r.partyKind="";r.partyId="";});
